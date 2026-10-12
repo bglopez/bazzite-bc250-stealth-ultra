@@ -31,6 +31,14 @@ jobs:
           sudo docker cp blue-build-installer:/out/bluebuild /usr/bin/bluebuild
           sudo docker rm blue-build-installer
           bluebuild --version
+      - name: Install cosign
+        env:
+          COSIGN_VERSION: v3.0.6
+        run: |
+          curl -fsSL -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          sudo install -m 0755 cosign /usr/local/bin/cosign
+          rm cosign
+          cosign version
       - name: Build and push experimental image
         env:
           BB_BUILD_PUSH: "true"
