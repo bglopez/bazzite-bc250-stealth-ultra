@@ -1,6 +1,6 @@
 name: bazzite-bc250-stealth-ultra
-description: Conservative BC-250 Bazzite Deck image based on 62fixolab; controller changes paused
-base-image: ghcr.io/62fixolab/bazzite-bc250-patched-deck
+description: BC-250 40CU Bazzite Deck image based on 62fixolab; controller changes paused
+base-image: ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu
 image-version: latest
 modules:
   - type: systemd
