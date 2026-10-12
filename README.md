@@ -1,18 +1,18 @@
-# Bazzite BC-250 Stealth Ultra (experimental)
+# Bazzite BC-250 (experimental)
 
-Custom Bazzite Deck image derived from [62fixolab's BC-250 patched Deck image](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images), adding an experimental [xonedo](https://github.com/honjow/xonedo) driver build for the Turtle Beach Stealth Ultra 2.4 GHz USB receiver.
+Custom Bazzite Deck image derived from [62fixolab's BC-250 patched 40CU Deck image](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images), with BC-250 diagnostics and custom system configuration.
 
-**Status: experimental. Do not rebase until the GitHub Actions build succeeds, the GHCR image exists, and the driver and bootc/OSTree compatibility have been verified.** The current workflow publishes a `:test` image without configuring this repository's own cosign signing policy. The upstream 62fixolab signature does **not** automatically sign this derived image.
+**Status: experimental. Do not rebase until the GitHub Actions build succeeds, the GHCR image exists, and bootc/OSTree compatibility has been verified.** The current workflow publishes a `:test` image without configuring this repository's own cosign signing policy. The upstream 62fixolab signature does **not** automatically sign this derived image.
 
 ## Build
 
-The [GitHub Actions workflow](.github/workflows/build.yml) builds on pushes to `master`, resolving the current upstream `honjow/xonedo` HEAD for each build. Successful builds are intended to publish:
+The [GitHub Actions workflow](.github/workflows/build.yml) builds the BlueBuild recipe on pushes to `master` that change non-Markdown files, or when manually dispatched. Successful builds are intended to publish:
 
 ```text
 ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
 ```
 
-Check [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions) for a successful run and [Packages](https://github.com/bglopez?tab=packages) for the published image before continuing. A green workflow does not guarantee the image boots or the dongle works.
+Check [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions) for a successful run and [Packages](https://github.com/bglopez?tab=packages) for the published image before continuing. A green workflow does not guarantee the image boots or works correctly on your hardware.
 
 ## Switching from 62fixolab's BC-250 Deck image
 
@@ -40,13 +40,8 @@ This uses an **unverified registry image** and therefore does not enforce image 
 ```bash
 rpm-ostree status
 uname -r
-lsusb -d 10f5:7070
-lsmod | grep -E 'xone|gip' || true
-sudo dmesg | grep -iE 'xone|gip|10f5' | tail -n 60
 systemctl status cyan-skillfish-governor-smu --no-pager
 ```
-
-The USB ID should be checked against your actual dongle; module names and driver support depend on the upstream revision.
 
 ## Rollback and return to the original image
 
@@ -70,7 +65,6 @@ If the system does not boot, select the previous deployment from the bootloader 
 
 - Stay on the **Deck** variant; do not switch desktop environments as part of this test.
 - The custom `:test` tag is mutable; consider pinning a tested image digest for reproducibility.
-- Kernel modules must match the kernel ABI inside the image. An unsuccessful module build or missing firmware means this is not a deployable controller fix.
 - This project is independent of Bazzite and 62fixolab.
 
 See [62fixolab's installation guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images#install) and [Bazzite's rebase guide](https://docs.bazzite.gg/Installing_and_Managing_Software/Updates_Rollbacks_and_Rebasing/rebase_guide/) for additional background.
