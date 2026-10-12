@@ -14,7 +14,7 @@ fi
 section() { printf '\n== %s ==\n' "$1"; }
 value() {
   local data
-  if [[ -r $1 ]] && IFS= read -r data < "$1"; then
+  if [[ -f $1 && -r $1 ]] && IFS= read -r data < "$1"; then
     printf '%s' "$data"
   else
     printf 'unavailable'
@@ -22,7 +22,7 @@ value() {
 }
 temperature() {
   local raw sign= absolute
-  if [[ -r $1 ]] && IFS= read -r raw < "$1" && [[ $raw =~ ^-?[0-9]+$ ]]; then
+  if [[ -f $1 && -r $1 ]] && IFS= read -r raw < "$1" && [[ $raw =~ ^-?[0-9]+$ ]]; then
     [[ $raw == -* ]] && sign=-
     absolute=${raw#-}
     printf '%s%d.%03d C' "$sign" "$((absolute / 1000))" "$((absolute % 1000))"
@@ -32,7 +32,7 @@ temperature() {
 }
 frequency() {
   local raw
-  if [[ -r $1 ]] && IFS= read -r raw < "$1" && [[ $raw =~ ^[0-9]+$ ]]; then
+  if [[ -f $1 && -r $1 ]] && IFS= read -r raw < "$1" && [[ $raw =~ ^[0-9]+$ ]]; then
     printf '%s Hz' "$raw"
   else
     printf 'unavailable'
@@ -54,6 +54,7 @@ fi
 section 'GPU clocks'
 found_gpu=0
 for card in /sys/class/drm/card[0-9]*; do
+  [[ ${card##*/} =~ ^card[0-9]+$ ]] || continue
   [[ -d $card/device ]] || continue
   vendor=$(value "$card/device/vendor")
   device=$(value "$card/device/device")
