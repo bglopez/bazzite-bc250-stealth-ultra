@@ -1,0 +1,27 @@
+name: Build BC250 Stealth Ultra
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image
+        env:
+          XONE_COMMIT: ${{ vars.XONE_COMMIT }}
+        run: |
+          test -n "$XONE_COMMIT" || { echo "Set repo Actions variable XONE_COMMIT to a reviewed full commit SHA"; exit 1; }
+          docker build --build-arg XONE_COMMIT="$XONE_COMMIT" -t "ghcr.io/${GITHUB_REPOSITORY,,}:test" .
+      - name: Push image
+        run: docker push "ghcr.io/${GITHUB_REPOSITORY,,}:test"
