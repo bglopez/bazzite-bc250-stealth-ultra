@@ -47,4 +47,4 @@ jobs:
           BB_REGISTRY: ghcr.io
           BB_REGISTRY_NAMESPACE: ${{ github.repository_owner }}
           RUST_LOG_STYLE: always
-        run: bluebuild build -v recipes/recipe.yml
+        run: bluebuild build --no-sign -v recipes/recipe.yml
