@@ -3,6 +3,10 @@ description: BC-250 40CU Bazzite Deck image based on 62fixolab; controller chang
 base-image: ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu
 image-version: latest
 modules:
+  - type: files
+    files:
+      - source: system
+        destination: /
   - type: systemd
     system:
       enabled:

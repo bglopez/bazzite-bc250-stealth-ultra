@@ -80,16 +80,11 @@ See [62fixolab's installation guide](https://github.com/62fixolab/Latest-Bazzite
 
 This custom image now inherits from `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest`. The upstream 40CU image includes **optional runtime unlock tooling**, not a guaranteed or automatically enabled 40CU mode. Consult the [upstream 40CU guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images/blob/main/docs/40cu.md) for board-specific enablement and recovery.
 
-### Optional: disable CPU vulnerability mitigations
+### CPU vulnerability mitigations
 
 **Security warning:** `mitigations=off` disables CPU security mitigations. It is not a universal gaming performance improvement and may expose the system to additional attack classes. Use only if you accept the risk.
 
-Kernel arguments are deployment-specific and are **not automatically changed by the container recipe**. To opt in after confirming your new deployment boots, run:
-
-```bash
-sudo rpm-ostree kargs --append-if-missing=mitigations=off
-sudo systemctl reboot
-```
+The current BlueBuild recipe includes `mitigations=off` in its kernel arguments. This is already part of the image configuration; no separate command is needed to add it.
 
 Verify after reboot:
 
@@ -97,11 +92,12 @@ Verify after reboot:
 cat /proc/cmdline
 ```
 
-To undo the setting:
-
-```bash
-sudo rpm-ostree kargs --delete-if-present=mitigations=off
-sudo systemctl reboot
-```
+To remove it from future builds, delete the `mitigations=off` entry in `recipes/recipe.yml` and rebuild. Kernel arguments are deployment-specific, so check the running command line after reboot.
 
 Keep a known-good deployment available for rollback. Do not enable additional compute units until you've confirmed stability at your current setting.
+
+## Read-only BC-250 diagnostics
+
+On this image, run `bc250-diag` as a regular user. It prints the governor service state, BC-250 GPU clock levels (or readable hwmon frequency values), thermal sensor readings, the running kernel command line, and KFD driver-reported CU topology when available. A `*` in the GPU SCLK table marks the current level. You can save the report with `bc250-diag > bc250-report.txt`.
+
+The helper tolerates missing devices and sensors and never changes clocks, CU settings, or services. KFD topology describes what the driver initialized; it does **not** confirm the live 40CU SPI/WGP dispatch table. The upstream `bc250-cu-live-manager status` uses privileged register access, so this helper does not invoke it or prompt for `sudo`. The 40CU image includes optional tooling for up to 40 CUs, but that does not mean 40 CUs are active or stable on a particular board.

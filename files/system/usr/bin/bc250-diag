@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Read-only BC-250 snapshot. Never call the CU manager: its status command may request sudo.
+set -u
+
+if [[ $# -ne 0 ]]; then
+  if [[ $# -eq 1 && $1 == --help ]]; then
+    printf 'Usage: bc250-diag\nPrint a read-only BC-250 hardware and system snapshot.\n'
+    exit 0
+  fi
+  printf 'Usage: bc250-diag\n' >&2
+  exit 2
+fi
+
+section() { printf '\n== %s ==\n' "$1"; }
+value() {
+  local data
+  if [[ -r $1 ]] && IFS= read -r data < "$1"; then
+    printf '%s' "$data"
+  else
+    printf 'unavailable'
+  fi
+}
+temperature() {
+  local raw sign= absolute
+  if [[ -r $1 ]] && IFS= read -r raw < "$1" && [[ $raw =~ ^-?[0-9]+$ ]]; then
+    [[ $raw == -* ]] && sign=-
+    absolute=${raw#-}
+    printf '%s%d.%03d C' "$sign" "$((absolute / 1000))" "$((absolute % 1000))"
+  else
+    printf 'unavailable'
+  fi
+}
+frequency() {
+  local raw
+  if [[ -r $1 ]] && IFS= read -r raw < "$1" && [[ $raw =~ ^[0-9]+$ ]]; then
+    printf '%s Hz' "$raw"
+  else
+    printf 'unavailable'
+  fi
+}
+
+section 'Governor service'
+if command -v systemctl >/dev/null 2>&1; then
+  unit=cyan-skillfish-governor-smu.service
+  enabled=$(systemctl is-enabled "$unit" 2>/dev/null)
+  active=$(systemctl is-active "$unit" 2>/dev/null)
+  [[ -n $enabled ]] || enabled=unavailable
+  [[ -n $active ]] || active=unavailable
+  printf '%s: enabled=%s active=%s\n' "$unit" "$enabled" "$active"
+else
+  printf 'systemctl unavailable\n'
+fi
+
+section 'GPU clocks'
+found_gpu=0
+for card in /sys/class/drm/card[0-9]*; do
+  [[ -d $card/device ]] || continue
+  vendor=$(value "$card/device/vendor")
+  device=$(value "$card/device/device")
+  [[ ${vendor,,} == 0x1002 && ${device,,} == 0x13fe ]] || continue
+  found_gpu=1
+  printf '%s (AMD BC-250 %s:%s)\n' "${card##*/}" "$vendor" "$device"
+  if [[ -r $card/device/pp_dpm_sclk ]]; then
+    printf '  SCLK levels (* = current):\n'
+    while IFS= read -r line; do printf '    %s\n' "$line"; done < "$card/device/pp_dpm_sclk"
+  else
+    found_clock=0
+    for input in "$card"/device/hwmon/hwmon*/freq*_input; do
+      [[ -e $input ]] || continue
+      found_clock=1
+      prefix=${input%_input}
+      printf '  %s: current=%s min=%s max=%s\n' \
+        "$(value "${prefix}_label")" "$(frequency "$input")" \
+        "$(frequency "${prefix}_min")" "$(frequency "${prefix}_max")"
+    done
+    [[ $found_clock -eq 1 ]] || printf '  Clock data unavailable (pp_dpm_sclk and hwmon frequency absent).\n'
+  fi
+done
+[[ $found_gpu -eq 1 ]] || printf 'No BC-250 DRM card found (PCI 1002:13fe).\n'
+
+section 'Thermal sensors'
+found_temp=0
+for input in /sys/class/hwmon/hwmon*/temp*_input; do
+  [[ -e $input ]] || continue
+  found_temp=1
+  prefix=${input%_input}
+  printf '%s/%s (%s): %s\n' "$(value "${input%/temp*_input}/name")" \
+    "${input##*/}" "$(value "${prefix}_label")" "$(temperature "$input")"
+done
+for input in /sys/class/thermal/thermal_zone*/temp; do
+  [[ -e $input ]] || continue
+  found_temp=1
+  printf '%s (%s): %s\n' "${input%/temp}" "$(value "${input%/temp}/type")" "$(temperature "$input")"
+done
+[[ $found_temp -eq 1 ]] || printf 'No readable thermal sensors found.\n'
+
+section 'Kernel command line'
+if [[ -r /proc/cmdline ]]; then
+  cat /proc/cmdline
+else
+  printf 'unavailable\n'
+fi
+
+section 'Compute units'
+if command -v bc250-cu-live-manager >/dev/null 2>&1; then
+  printf '40CU runtime manager: installed (no register reads or writes attempted)\n'
+else
+  printf '40CU runtime manager: unavailable\n'
+fi
+found_node=0
+for properties in /sys/class/kfd/kfd/topology/nodes/*/properties; do
+  [[ -r $properties ]] || continue
+  simd_count= simd_per_cu= pci_device_id=
+  while read -r key entry _; do
+    case $key in
+      simd_count) simd_count=$entry ;;
+      simd_per_cu) simd_per_cu=$entry ;;
+      pci_device_id) pci_device_id=$entry ;;
+    esac
+  done < "$properties"
+  [[ $simd_count =~ ^[1-9][0-9]*$ ]] || continue
+  [[ ${pci_device_id,,} == 0x13fe || $pci_device_id == 5118 ]] || continue
+  found_node=1
+  printf 'KFD node %s: PCI device ID=%s, SIMD count=%s, SIMD per CU=%s' \
+    "${properties%/properties}" "${pci_device_id:-unknown}" "$simd_count" "${simd_per_cu:-unknown}"
+  if [[ $simd_per_cu =~ ^[1-9][0-9]*$ ]]; then
+    printf ', driver-reported CUs=%s' "$((simd_count / simd_per_cu))"
+  fi
+  printf '\n'
+done
+[[ $found_node -eq 1 ]] || printf 'No readable BC-250 KFD GPU topology found.\n'
+printf 'KFD topology reflects the driver view; it cannot confirm the live SPI/WGP dispatch table.\n'
+printf 'The 40CU image offers optional tooling for up to 40 CUs; active live CUs require privileged register access.\n'
