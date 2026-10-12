@@ -19,9 +19,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build image
         env:
-          XONE_COMMIT: ${{ vars.XONE_COMMIT }}
+          XONE_REPO: honjow/xonedo
         run: |
-          test -n "$XONE_COMMIT" || { echo "Set repo Actions variable XONE_COMMIT to a reviewed full commit SHA"; exit 1; }
+          XONE_COMMIT="$(git ls-remote "https://github.com/${XONE_REPO}.git" HEAD | cut -f1)"
+          test "$XONE_COMMIT" != "" || { echo "Unable to resolve upstream HEAD"; exit 1; }
+          echo "Building xonedo upstream commit: $XONE_COMMIT"
           docker build --build-arg XONE_COMMIT="$XONE_COMMIT" -t "ghcr.io/${GITHUB_REPOSITORY,,}:test" .
       - name: Push image
         run: docker push "ghcr.io/${GITHUB_REPOSITORY,,}:test"
