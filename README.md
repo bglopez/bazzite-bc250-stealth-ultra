@@ -13,7 +13,6 @@ The direct base remains `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:lates
 | 40CU dispatch | Enables `bc250-force-40cu.service` to request all 40 CUs on every boot, after GPU initialization and saved CU settings, before the display manager. Adds enable, recovery, and log commands. |
 | Vulkan async compute | Builds Mesa 26.2.4 RADV with three pinned BC-250 patches into `/usr/lib/bc250-radv`. Selects this patched driver globally for 64-bit Vulkan applications in new desktop and game sessions; retains stock 32-bit RADV and software rendering. |
 | Graphics session defaults | Sets `AMD_VULKAN_ICD=RADV`, `RADV_DEBUG=nohiz`, and `MESA_LOADER_DRIVER_OVERRIDE=zink` in `/etc/environment`, preserving unrelated base-image settings. |
-| Vulkan memory heap | Enables `radv_enable_unified_heap_on_apu` through an immutable RADV drirc profile, presenting shared APU memory as one device-local heap. |
 | Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
 | Game benchmarks | Adds `bc250-benchmark` for MangoHud frame captures, system context, and before/after comparisons. Driver and unified-heap overrides apply only to the launched game. |
 | Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
@@ -189,8 +188,6 @@ These defaults take effect after deploying the rebuilt image and starting a new 
 The image builds a private Mesa 26.2.4 RADV with the three patches from [bc250-async-compute-bazzite](https://github.com/tri3gubki-ops/bc250-async-compute-bazzite), pinned to commit `56bf06b986f4639c32a669e9cdd31cdf7fba44b6`. Mesa's source archive is SHA-256 checked. The build stage's compilers and headers are not copied into the final image.
 
 The patched 64-bit driver lives at `/usr/lib/bc250-radv` and is selected globally for new graphical sessions and login shells. Stock Mesa remains installed, including its 32-bit driver. Current system game profiles are used through drirc symlinks. The optional signed-dot-product/FSR4 patch is not included.
-
-The image installs `/usr/share/drirc.d/99-bc250-unified-heap.conf` with `radv_enable_unified_heap_on_apu=true`. Both the private RADV and system RADV can read this profile. It presents shared APU memory as one device-local Vulkan heap instead of splitting it into device-local and system heaps. This can help games that make allocation decisions based on reported VRAM; it does not increase physical memory or guarantee higher FPS. Existing `/etc/drirc`, user profiles, or environment overrides can take precedence. Restart applications after deployment to pick up the setting. To compare or disable it for one Steam game, use `radv_enable_unified_heap_on_apu=false %command%`. Flatpak runtimes need separate validation.
 
 This exposes the BC-250's dedicated compute queue. Performance gains depend on the game actually using that queue; queue availability and passing correctness tests do not establish higher FPS. Flatpak applications have separate graphics runtimes and are not validated by this integration.
 

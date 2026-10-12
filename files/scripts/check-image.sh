@@ -46,13 +46,6 @@ test -s /etc/pki/containers/bazzite-bc250-stealth-ultra.pub
 python3 - <<'PY'
 import json
 from pathlib import Path
-import xml.etree.ElementTree as ET
-
-profile = Path('/usr/share/drirc.d/99-bc250-unified-heap.conf')
-root = ET.parse(profile).getroot()
-option = root.find("./device[@driver='radv']/application/option[@name='radv_enable_unified_heap_on_apu']")
-assert option is not None and option.get('value') == 'true', 'Missing unified APU heap default'
-assert Path('/usr/lib/bc250-radv/share/drirc.d').resolve() == profile.parent
 environment = Path('/etc/environment').read_text().splitlines()
 for setting in ('AMD_VULKAN_ICD=RADV', 'RADV_DEBUG=nohiz', 'MESA_LOADER_DRIVER_OVERRIDE=zink'):
     assert setting in environment, f'Missing graphics default: {setting}'
