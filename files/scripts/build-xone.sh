@@ -16,6 +16,12 @@ git clone https://github.com/honjow/xonedo /tmp/xonedo
 cd /tmp/xonedo
 git checkout --detach "$XONE_COMMIT"
 # xone's Makefile/install interface must be validated for the selected revision.
-make KERNELRELEASE="$KVER" -j"$(nproc)"
-make KERNELRELEASE="$KVER" install
+KDIR="/usr/src/kernels/$KVER"
+test -d "$KDIR" || { echo "Kernel headers missing at $KDIR" >&2; exit 1; }
+# xonedo Makefile uses KDIR/KVERSION, not KERNELRELEASE.
+make KVERSION="$KVER" KDIR="$KDIR" -j"$(nproc)"
+# Avoid upstream install target: it invokes uname-based uninstall/install scripts.
+install -d "/usr/lib/modules/$KVER/extra/xonedo"
+find . -maxdepth 1 -name "*.ko" -exec install -m 0644 {} "/usr/lib/modules/$KVER/extra/xonedo/" \;
+test -n "$(find /usr/lib/modules/$KVER/extra/xonedo -name '*.ko' -print -quit)"
 depmod -a "$KVER"
