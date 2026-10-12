@@ -74,3 +74,34 @@ If the system does not boot, select the previous deployment from the bootloader 
 - This project is independent of Bazzite and 62fixolab.
 
 See [62fixolab's installation guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images#install) and [Bazzite's rebase guide](https://docs.bazzite.gg/Installing_and_Managing_Software/Updates_Rollbacks_and_Rebasing/rebase_guide/) for additional background.
+
+
+## BC-250 40CU base and CPU mitigations
+
+This custom image now inherits from `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest`. The upstream 40CU image includes **optional runtime unlock tooling**, not a guaranteed or automatically enabled 40CU mode. Consult the [upstream 40CU guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images/blob/main/docs/40cu.md) for board-specific enablement and recovery.
+
+### Optional: disable CPU vulnerability mitigations
+
+**Security warning:** `mitigations=off` disables CPU security mitigations. It is not a universal gaming performance improvement and may expose the system to additional attack classes. Use only if you accept the risk.
+
+Kernel arguments are deployment-specific and are **not automatically changed by the container recipe**. To opt in after confirming your new deployment boots, run:
+
+```bash
+sudo rpm-ostree kargs --append-if-missing=mitigations=off
+sudo systemctl reboot
+```
+
+Verify after reboot:
+
+```bash
+cat /proc/cmdline
+```
+
+To undo the setting:
+
+```bash
+sudo rpm-ostree kargs --delete-if-present=mitigations=off
+sudo systemctl reboot
+```
+
+Keep a known-good deployment available for rollback. Do not enable additional compute units until you've confirmed stability at your current setting.
