@@ -11,3 +11,6 @@ modules:
     snippets:
       - 'mkdir -p /usr/lib/systemd/journald.conf.d'
       - 'printf "[Journal]\\nSystemMaxUse=512M\\nSystemKeepFree=1G\\n" > /usr/lib/systemd/journald.conf.d/60-bc250-storage.conf'
+  - type: kargs
+    kargs:
+      - mitigations=off
