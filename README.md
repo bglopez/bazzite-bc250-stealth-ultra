@@ -1,8 +1,8 @@
-# Bazzite BC-250 (experimental)
+# Bazzite BC-250
 
 Custom Bazzite Deck image derived from [62fixolab's BC-250 patched 40CU Deck image](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images), with BC-250 diagnostics and custom system configuration.
 
-**Status: experimental. Do not rebase until the GitHub Actions build succeeds, the GHCR image exists, and bootc/OSTree compatibility has been verified.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`. The upstream 62fixolab signature does **not** automatically sign this derived image.
+**Status: tested on the owner's BC-250, including successful boot, async compute correctness tests, and owner-confirmed gameplay.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`. The upstream 62fixolab signature does **not** automatically sign this derived image.
 
 ## Changes compared with upstream
 
@@ -11,7 +11,7 @@ The direct base remains `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:lates
 | Area | Changes in this image |
 | --- | --- |
 | 40CU dispatch | Enables `bc250-force-40cu.service` to request all 40 CUs on every boot, after GPU initialization and saved CU settings, before the display manager. Adds enable, recovery, and log commands. |
-| Vulkan async compute | Builds Mesa 26.2.4 RADV with three pinned BC-250 patches into `/usr/lib/bc250-radv`. Selects this experimental driver globally for 64-bit Vulkan applications in new desktop and game sessions; retains stock 32-bit RADV and software rendering. |
+| Vulkan async compute | Builds Mesa 26.2.4 RADV with three pinned BC-250 patches into `/usr/lib/bc250-radv`. Selects this patched driver globally for 64-bit Vulkan applications in new desktop and game sessions; retains stock 32-bit RADV and software rendering. |
 | Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
 | Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
 | Diagnostics | Adds `bc250-diag` and `ujust bc250-diagnostics` for governor state, clocks, temperatures, kernel arguments, and available driver CU topology. |
@@ -82,13 +82,13 @@ The original image uses a signed OSTree ref:
 rpm-ostree rebase ostree-image-signed:docker://ghcr.io/62fixolab/bazzite-bc250-patched-deck:latest
 ```
 
-The recipe installs this repository's public key and signing policy for subsequent signed updates. Your existing deployment must trust that key before a signed rebase will work. For the initial switch to a **successfully built, published, and verified** image, the unsigned/experimental OCI rebase syntax is:
+The recipe installs this repository's public key and signing policy for subsequent signed updates. Your existing deployment must trust that key before a signed rebase will work. For the initial switch to a **successfully built, published, and verified** image, the unverified-registry OCI rebase syntax is:
 
 ```bash
 # Record the currently deployed image and available rollback deployment
 rpm-ostree status
 
-# EXPERIMENTAL: only after confirming a successful image build and bootc compatibility
+# Only after confirming a successful build and verifying the image signature
 sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
 sudo systemctl reboot
 ```
@@ -183,7 +183,7 @@ The patched 64-bit driver lives at `/usr/lib/bc250-radv` and is selected globall
 
 This exposes the BC-250's dedicated compute queue. Performance gains depend on the game actually using that queue; queue availability and passing correctness tests do not establish higher FPS. Flatpak applications have separate graphics runtimes and are not validated by this integration.
 
-Hardware validation on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. This tested the driver in isolated processes, not a full desktop session or game benchmark; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2.
+Hardware validation on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. After deployment and reboot, the installed driver also passed all five correctness tests, and the owner confirmed that games work with the updated image. These checks establish functionality; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2.
 
 After updating and rebooting:
 
