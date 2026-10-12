@@ -8,8 +8,10 @@ dnf5 -y install git make gcc "kernel-devel-uname-r = $KVER" || {
   echo "Matching kernel-devel unavailable. Do not install modules for a different kernel." >&2
   exit 1
 }
-# Pin a reviewed commit before production deployment.
-: "${XONE_COMMIT:?Set XONE_COMMIT to a reviewed full upstream commit SHA}"
+# Resolve the current upstream commit at build time.
+XONE_COMMIT="$(git ls-remote https://github.com/honjow/xonedo.git HEAD | cut -f1)"
+test -n "$XONE_COMMIT" || { echo "Could not resolve xonedo HEAD" >&2; exit 1; }
+echo "Using xonedo commit: $XONE_COMMIT"
 git clone https://github.com/honjow/xonedo /tmp/xonedo
 cd /tmp/xonedo
 git checkout --detach "$XONE_COMMIT"
