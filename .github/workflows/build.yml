@@ -3,44 +3,40 @@ on:
   workflow_dispatch:
   push:
     branches: [master]
+    paths-ignore:
+      - "**.md"
+concurrency:
+  group: bc250-stealth-ultra-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
   packages: write
+  id-token: write
 jobs:
-  build:
+  bluebuild:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install Buildah and Podman
+      - name: Maximize build space
+        uses: hastd/free-disk-space@68572aeaadb7f76bd408246328e95926323402b5
+        with:
+          skip-if-available: "80G"
+      - name: Set up Docker Buildx
         run: |
-          sudo apt-get update
-          sudo apt-get install -y buildah podman
-          buildah version
-          podman --version
-      - name: Resolve upstream driver commit
-        id: driver
+          docker buildx create --name bluebuild-builder --driver docker-container --use
+          docker buildx inspect --bootstrap
+      - name: Install BlueBuild
         run: |
-          XONE_COMMIT="$(git ls-remote https://github.com/honjow/xonedo.git HEAD | cut -f1)"
-          test -n "$XONE_COMMIT"
-          echo "commit=$XONE_COMMIT" >> "$GITHUB_OUTPUT"
-          echo "Using xonedo commit: $XONE_COMMIT"
-      - name: Build image with Buildah (VFS)
+          sudo docker create --name blue-build-installer ghcr.io/blue-build/cli:v0.9-installer
+          sudo docker cp blue-build-installer:/out/bluebuild /usr/bin/bluebuild
+          sudo docker rm blue-build-installer
+          bluebuild --version
+      - name: Build and push experimental image
         env:
-          STORAGE_DRIVER: vfs
-          BUILDAH_ISOLATION: chroot
-          XONE_COMMIT: ${{ steps.driver.outputs.commit }}
-        run: |
-          sudo --preserve-env=STORAGE_DRIVER,BUILDAH_ISOLATION,XONE_COMMIT \
-            buildah --storage-driver vfs bud --isolation chroot \
-            --format oci --build-arg "XONE_COMMIT=$XONE_COMMIT" \
-            -f Containerfile \
-            -t ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test .
-      - name: Push image to GHCR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "$GH_TOKEN" | sudo buildah --storage-driver vfs login \
-            -u "$GITHUB_ACTOR" --password-stdin ghcr.io
-          sudo buildah --storage-driver vfs push \
-            ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test \
-            docker://ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
+          BB_BUILD_PUSH: "true"
+          BB_PASSWORD: ${{ github.token }}
+          BB_USERNAME: ${{ github.repository_owner }}
+          BB_REGISTRY: ghcr.io
+          BB_REGISTRY_NAMESPACE: ${{ github.repository_owner }}
+          RUST_LOG_STYLE: always
+        run: bluebuild build -v recipes/recipe.yml
