@@ -44,3 +44,11 @@ bc250-async-disable:
 # Enable the private patched Vulkan driver after logout/reboot
 bc250-async-enable:
     @sudo bc250-async-compute always enable
+
+# Show the game benchmark recorder's options
+bc250-benchmark-help:
+    @bc250-benchmark run --help
+
+# List saved before/after game benchmark runs
+bc250-benchmark-list:
+    @bc250-benchmark list

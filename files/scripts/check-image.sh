@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Offline image checks: no GPU register writes or service starts during builds.
 set -euo pipefail
-for command in bc250-cu-live-manager bc250-governor-profile cyan-skillfish-governor-smu umr ujust just btrfs swapon zramctl vulkaninfo bc250-async-compute; do
+for command in bc250-cu-live-manager bc250-governor-profile cyan-skillfish-governor-smu umr ujust just btrfs swapon zramctl vulkaninfo bc250-async-compute bc250-benchmark mangohud; do
   command -v "$command" >/dev/null
 done
 for script in /usr/bin/bc250-diag /usr/bin/bc250-memory /usr/bin/bc250-cu-live-manager \
@@ -23,9 +23,11 @@ done
 "$found_kernel"
 for recipe in bc250-diagnostics bc250-memory-status bc250-setup-swap bc250-disable-swap \
   bc250-enable-40cu-boot bc250-recover-stock bc250-unlock-logs bc250-cu-status \
-  bc250-async-status bc250-async-test bc250-async-disable bc250-async-enable; do
+  bc250-async-status bc250-async-test bc250-async-disable bc250-async-enable \
+  bc250-benchmark-help bc250-benchmark-list; do
   ujust --show "$recipe" >/dev/null
 done
+bc250-benchmark --help >/dev/null
 for binary in /usr/lib/bc250-radv/lib64/libvulkan_radeon.so \
   /usr/share/bc250-async-compute/test/bc250-ace-test \
   /usr/share/bc250-async-compute/test/bc250-ace-soak; do

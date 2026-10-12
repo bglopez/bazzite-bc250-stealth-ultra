@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+"""Record comparable game runs with MangoHud; no privileged settings are changed."""
+
+import argparse
+import csv
+import datetime as dt
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import statistics
+import subprocess
+import sys
+import uuid
+
+
+ROOT = Path(os.environ.get("BC250_BENCHMARK_DIR", str(
+    Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "bc250-benchmarks")))
+ICD_DIR = Path("/usr/share/vulkan/icd.d")
+PATCHED = Path("/usr/lib/bc250-radv/share/vulkan/icd.d/radeon_icd.x86_64.json")
+ENV_KEYS = (
+    "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "RADV_DEBUG", "RADV_PERFTEST",
+    "AMD_VULKAN_ICD", "AMD_CU_MASK", "MESA_LOADER_DRIVER_OVERRIDE",
+    "radv_enable_unified_heap_on_apu", "MESA_SHADER_CACHE_MAX_SIZE",
+    "DRIRC_CONFIGDIR", "PROTON_USE_WINED3D", "PROTON_ENABLE_NVAPI",
+    "DXVK_FRAME_RATE", "SteamAppId", "STEAM_COMPAT_APP_ID",
+)
+SENSORS = {
+    "gpu_load": "GPU load (%)", "cpu_load": "CPU load (%)",
+    "gpu_core_clock": "GPU clock (MHz)", "cpu_mhz": "CPU clock (MHz)",
+    "gpu_temp": "GPU temperature (C)", "cpu_temp": "CPU temperature (C)",
+    "gpu_vram_used": "GPU memory (GiB)", "ram_used": "RAM (GiB)",
+    "swap_used": "Swap (GiB)", "gpu_power": "GPU power (W)",
+}
+
+
+def read(path):
+    try:
+        return Path(path).read_text().strip()
+    except OSError:
+        return None
+
+
+def capture(argv):
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=10,
+                                env={k: v for k, v in os.environ.items() if k != "LD_PRELOAD"})
+        return result.stdout.strip() if result.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def snapshot(env):
+    deployment = capture(["rpm-ostree", "status", "--json"])
+    if deployment:
+        try:
+            deployment = [{k: d.get(k) for k in (
+                "booted", "version", "checksum", "container-image-reference",
+                "container-image-reference-digest")}
+                for d in json.loads(deployment)["deployments"] if d.get("booted")]
+        except (ValueError, KeyError, TypeError):
+            deployment = None
+    profiles = list(Path("/usr/share/drirc.d").glob("*.conf"))
+    profiles += [Path("/etc/drirc"), Path.home() / ".drirc"]
+    return {
+        "kernel": os.uname().release,
+        "kernel_args": read("/proc/cmdline"),
+        "deployment": deployment,
+        "async_driver": read("/usr/share/bc250-async-compute/VERSION"),
+        "system_mesa": capture(["rpm", "-q", "mesa-vulkan-drivers"]),
+        "mangohud": capture(["rpm", "-q", "mangohud"]),
+        "cpu": capture(["lscpu"]),
+        "tuned": capture(["tuned-adm", "active"]),
+        "governor": read("/etc/cyan-skillfish-governor-smu/config.toml"),
+        "ttm_pages_limit": read("/sys/module/ttm/parameters/pages_limit"),
+        "swaps": read("/proc/swaps"),
+        "environment": {k: env[k] for k in ENV_KEYS if k in env},
+        "drirc": {str(p): text for p in profiles if (text := read(p)) is not None},
+    }
+
+
+def game_environment(args, directory):
+    env = os.environ.copy()
+    if args.driver != "current":
+        first = PATCHED if args.driver == "patched" else ICD_DIR / "radeon_icd.x86_64.json"
+        if not first.is_file():
+            raise ValueError(f"Requested driver is missing: {first}")
+        drivers = [first]
+        if (ICD_DIR / "radeon_icd.i686.json").is_file():
+            drivers.append(ICD_DIR / "radeon_icd.i686.json")
+        env["VK_DRIVER_FILES"] = env["VK_ICD_FILENAMES"] = ":".join(map(str, drivers))
+    if args.heap != "current":
+        env["radv_enable_unified_heap_on_apu"] = "true" if args.heap == "on" else "false"
+    # A private config makes every capture per-frame, with no MangoHud FPS cap.
+    env.pop("MANGOHUD_CONFIG", None)
+    env["MANGOHUD_CONFIGFILE"] = str(directory / "MangoHud.conf")
+    env["MANGOHUD"] = "1"
+    return env
+
+
+def write_json(path, value):
+    path.write_text(json.dumps(value, indent=2) + "\n")
+
+
+def run(args, command):
+    if not command:
+        raise ValueError("A game command is required after --")
+    mangohud = shutil.which("mangohud")
+    if not mangohud:
+        raise ValueError("MangoHud is required (included in the BC-250 image).")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", args.label):
+        raise ValueError("Use a label of 1-64 letters, numbers, dots, underscores or hyphens.")
+    now = dt.datetime.now(dt.timezone.utc)
+    directory = (ROOT / f"{now:%Y%m%dT%H%M%SZ}-{args.label}-{uuid.uuid4().hex[:6]}").resolve()
+    if any(c in str(directory) for c in "\n\r#"):
+        raise ValueError("Benchmark directory cannot contain newlines or # (MangoHud config syntax).")
+    env = game_environment(args, directory)
+    directory.mkdir(parents=True)
+    (directory / "MangoHud.conf").write_text(
+        "fps\nframetime\nframe_timing\ngpu_stats\ngpu_temp\ngpu_core_clock\n"
+        "cpu_stats\ncpu_temp\ncpu_mhz\nvram\nram\nswap\ngpu_power\n"
+        "log_interval=0\npermit_upload=0\ntoggle_logging=Shift_L+F2\n"
+        f"log_duration={args.seconds}\nautostart_log={args.delay}\noutput_folder={directory}\n")
+    metadata = {"schema": 1, "label": args.label, "started": now.isoformat(),
+                "command": command, "notes": args.notes, "driver": args.driver,
+                "heap": args.heap, "seconds": args.seconds, "delay": args.delay,
+                "state": "running", "context": snapshot(env)}
+    write_json(directory / "run.json", metadata)
+    print(f"Benchmark: {directory}", flush=True)
+    print(f"Capture: {args.seconds}s, " + (
+        f"starts {args.delay}s after each application's overlay initializes."
+        if args.delay else "press LEFT Shift+F2 once the scene is ready."), flush=True)
+    print("The game stays open after capture; exit normally to print the report.", flush=True)
+    child = None
+
+    def forward(signum, _frame):
+        if child is not None and child.poll() is None:
+            child.send_signal(signum)
+
+    previous = {s: signal.signal(s, forward) for s in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        # No detached sampler or output pipe that could keep Steam's reaper alive.
+        child = subprocess.Popen([mangohud, *command], env=env)
+        code = child.wait()
+        metadata.update(state="finished", exit_code=code,
+                        ended=dt.datetime.now(dt.timezone.utc).isoformat())
+    except OSError as exc:
+        code = 127
+        metadata.update(state="launch_failed", error=str(exc), exit_code=code)
+    finally:
+        for s, handler in previous.items():
+            signal.signal(s, handler)
+        write_json(directory / "run.json", metadata)
+    report(directory)
+    return code if code >= 0 else 128 - code
+
+
+def analyze(path):
+    """MangoHud CSV has system preamble lines followed by per-frame metrics."""
+    frames = []
+    sensor_values = {key: [] for key in SENSORS}
+    header = None
+    with path.open(newline="", encoding="utf-8-sig") as stream:
+        for lineno, row in enumerate(csv.reader(stream), 1):
+            row = [s.strip() for s in row]
+            if "frametime" in row and "fps" in row:
+                if header is not None:
+                    raise ValueError(f"{path.name}: multiple captures in one CSV")
+                header = row
+                continue
+            if header is None or not row or not any(row):
+                continue
+            data = dict(zip(header, row))
+            try:
+                ft = float(data["frametime"])
+                if len(row) != len(header) or not math.isfinite(ft) or ft <= 0:
+                    raise ValueError()
+            except (KeyError, ValueError):
+                raise ValueError(f"{path.name}:{lineno}: invalid/incomplete frame row") from None
+            frames.append(ft)
+            for key in SENSORS:
+                try:
+                    value = float(data[key])
+                    if not math.isfinite(value) or value < 0:
+                        continue
+                    if value == 0 and ("temp" in key or "clock" in key or key in ("cpu_mhz", "gpu_power")):
+                        continue
+                    sensor_values[key].append((value, ft))
+                except (ValueError, KeyError):
+                    pass
+    if len(frames) < 2:
+        raise ValueError(f"{path.name}: fewer than two valid frames")
+    ordered = sorted(frames)
+    slowest = ordered[-max(1, math.ceil(len(frames) * .01)):]
+    seconds = sum(frames) / 1000
+    return {
+        "csv": path.name, "frames": len(frames), "seconds": seconds,
+        "average_fps": len(frames) / seconds,
+        "low_1pct_fps": 1000 / statistics.mean(slowest),
+        "p99_ms": ordered[math.ceil(len(frames) * .99) - 1],
+        "over_50ms_per_minute": sum(ft > 50 for ft in frames) * 60 / seconds,
+        "sensors": {key: {"average": sum(v * t for v, t in values) / sum(t for _, t in values),
+                           "peak": max(v for v, _ in values)}
+                    for key, values in sensor_values.items() if values},
+    }
+
+
+def resolve(value):
+    path = Path(value).expanduser()
+    if path.is_dir() and (path / "run.json").is_file():
+        return path.resolve()
+    matches = []
+    for path in ROOT.glob("*/run.json"):
+        metadata = json.loads(path.read_text())
+        if metadata.get("label") == value:
+            matches.append(path.parent)
+    if not matches:
+        raise ValueError(f"No benchmark named {value!r}. Use 'list' to see saved runs.")
+    return sorted(matches)[-1]
+
+
+def results(directory):
+    valid, errors = [], []
+    for path in sorted(directory.glob("*.csv")):
+        if path.name.endswith("_summary.csv"):
+            continue
+        try:
+            valid.append(analyze(path))
+        except ValueError as exc:
+            errors.append(str(exc))
+    return valid, errors
+
+
+def report(directory):
+    valid, errors = results(directory)
+    write_json(directory / "summary.json", {"captures": valid, "errors": errors})
+    print(f"\nRun: {directory}")
+    for item in valid:
+        print(f"  {item['csv']}: {item['seconds']:.1f}s, {item['frames']} frames, "
+              f"{item['average_fps']:.2f} FPS, 1% low {item['low_1pct_fps']:.2f} FPS, "
+              f"p99 {item['p99_ms']:.2f} ms")
+    for error in errors:
+        print(f"  WARNING: {error}")
+    if not valid:
+        print("  No usable frame capture. Press LEFT Shift+F2 in-game, or use --delay N.\n"
+              "  Check that MangoHud appears; Flatpak/custom Steam runtimes may hide the host layer.")
+    return 0 if valid and not errors else 1
+
+
+def select(directory, filename):
+    valid, errors = results(directory)
+    if filename:
+        valid = [v for v in valid if v["csv"] == filename]
+    elif errors:
+        raise ValueError("; ".join(errors) + "; select a valid CSV explicitly")
+    if len(valid) != 1:
+        names = ", ".join(v["csv"] for v in valid) or "none"
+        raise ValueError(f"{directory}: select exactly one capture with --before-csv/--after-csv; found: {names}")
+    return valid[0]
+
+
+def compare(args):
+    before, after = resolve(args.before), resolve(args.after)
+    a, b = select(before, args.before_csv), select(after, args.after_csv)
+    print(f"Before: {before} / {a['csv']}\nAfter:  {after} / {b['csv']}")
+    print(f"{'Metric':34} {'Before':>10} {'After':>10} {'Change':>10}")
+    metrics = [("seconds", "Captured seconds"), ("average_fps", "Average FPS (higher is better)"),
+               ("low_1pct_fps", "1% low FPS (higher is better)"),
+               ("p99_ms", "p99 ms (lower is better)"),
+               ("over_50ms_per_minute", "Frames >50ms/min (lower is better)")]
+    for key, name in metrics:
+        delta = f"{(b[key] / a[key] - 1) * 100:+.1f}%" if a[key] else "n/a"
+        print(f"{name:34} {a[key]:10.2f} {b[key]:10.2f} {delta:>10}")
+    for key, name in SENSORS.items():
+        if key in a["sensors"] and key in b["sensors"]:
+            for stat in ("average", "peak"):
+                av, bv = a["sensors"][key][stat], b["sensors"][key][stat]
+                print(f"{name + ' ' + stat:34} {av:10.2f} {bv:10.2f} {bv - av:+10.2f}")
+    old, new = [json.loads((p / "run.json").read_text()) for p in (before, after)]
+    for key in ("kernel", "deployment", "governor", "tuned", "ttm_pages_limit", "environment", "drirc"):
+        if old["context"].get(key) != new["context"].get(key):
+            print(f"Context changed: {key} (details in run.json)")
+    for key in ("command", "notes", "driver", "heap", "seconds", "delay"):
+        if old.get(key) != new.get(key):
+            print(f"{key}: {old.get(key)!r} -> {new.get(key)!r}")
+    if min(a["seconds"], b["seconds"]) < 30 or max(a["seconds"], b["seconds"]) / min(a["seconds"], b["seconds"]) > 1.1:
+        print("WARNING: short or unequal captures; repeat the same scene for equal durations.")
+    if before == after:
+        print("WARNING: both selections refer to the same run.")
+    print("1% low = 1000 / mean of slowest 1% frame times; p99 uses nearest rank.\n"
+          "Sensor averages are time-weighted; unavailable sensors are omitted.\n"
+          "Use the same scene/settings/Proton/frame cap; repeat at least three times.\n"
+          "Requested driver settings are recorded, not proof of what a launcher ultimately loaded.")
+    return 0
+
+
+def positive(value):
+    result = int(value)
+    if result <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="action", required=True)
+    launch = sub.add_parser("run", help="wrap a game; place its command after --")
+    launch.add_argument("label", help="e.g. heap-off or heap-on")
+    launch.add_argument("--seconds", type=positive, default=60, help="capture length (default: 60)")
+    launch.add_argument("--delay", type=positive, default=0, help="auto-start after N seconds; default: manual Shift+F2")
+    launch.add_argument("--driver", choices=("current", "patched", "stock"), default="current")
+    launch.add_argument("--heap", choices=("current", "on", "off"), default="current")
+    launch.add_argument("--notes", default="", help="scene, resolution, preset, Proton and frame cap")
+    comparison = sub.add_parser("compare", help="compare two run paths or the latest run for each label")
+    comparison.add_argument("before")
+    comparison.add_argument("after")
+    comparison.add_argument("--before-csv")
+    comparison.add_argument("--after-csv")
+    summary = sub.add_parser("report", help="summarize all captures in a run")
+    summary.add_argument("run")
+    sub.add_parser("list", help="list saved runs")
+    argv, command = sys.argv[1:], []
+    if argv and argv[0] == "run" and "--" in argv:
+        split = argv.index("--")
+        argv, command = argv[:split], argv[split + 1:]
+    args = parser.parse_args(argv)
+    try:
+        if args.action == "run":
+            return run(args, command)
+        if args.action == "compare":
+            return compare(args)
+        if args.action == "report":
+            return report(resolve(args.run))
+        for path in sorted(ROOT.glob("*/run.json")):
+            meta = json.loads(path.read_text())
+            print(f"{meta['label']:20} {meta['state']:12} {path.parent}")
+        return 0
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"bc250-benchmark: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

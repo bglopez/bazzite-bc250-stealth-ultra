@@ -15,6 +15,7 @@ The direct base remains `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:lates
 | Graphics session defaults | Sets `AMD_VULKAN_ICD=RADV`, `RADV_DEBUG=nohiz`, and `MESA_LOADER_DRIVER_OVERRIDE=zink` in `/etc/environment`, preserving unrelated base-image settings. |
 | Vulkan memory heap | Enables `radv_enable_unified_heap_on_apu` through an immutable RADV drirc profile, presenting shared APU memory as one device-local heap. |
 | Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
+| Game benchmarks | Adds `bc250-benchmark` for MangoHud frame captures, system context, and before/after comparisons. Driver and unified-heap overrides apply only to the launched game. |
 | Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
 | Diagnostics | Adds `bc250-diag` and `ujust bc250-diagnostics` for governor state, clocks, temperatures, kernel arguments, and available driver CU topology. |
 | Optional disk swap | Adds `bc250-memory` and `ujust` helpers for an opt-in, persistent 8 GiB Btrfs swapfile at priority 10. No swapfile is allocated by the image build or automatically at boot. |
@@ -59,6 +60,8 @@ The image extends Bazzite's `ujust` commands while retaining upstream's existing
 | `ujust bc250-async-test` | Run async compute correctness tests |
 | `ujust bc250-async-disable` | Select stock Vulkan drivers for the next session |
 | `ujust bc250-async-enable` | Select patched Vulkan globally for the next session |
+| `ujust bc250-benchmark-help` | Show game benchmark capture options |
+| `ujust bc250-benchmark-list` | List saved benchmark runs |
 
 `bc250-recover-stock` restores CU dispatch only; use `bc250-async-disable` separately to restore stock Vulkan selection.
 
@@ -212,7 +215,70 @@ env -u VK_DRIVER_FILES -u VK_ICD_FILENAMES %command%
 
 To record whether a game uses compute queues, use `bc250-game-trace %command%`, then inspect `bc250-async-compute trace`. Trace logging adds overhead; compare performance separately with tracing disabled.
 
+## Before/after game benchmarks
+
+`bc250-benchmark` wraps a game with MangoHud and saves per-frame CSV data plus
+the kernel, image deployment, driver settings, governor configuration and memory
+settings. It requires no sudo and changes no persistent performance settings.
+
+For a unified-heap comparison, use this Steam launch option for the first run:
+
+```text
+bc250-benchmark run heap-off --heap off -- %command%
+```
+
+Warm up the game, enter a repeatable scene, then press **Left Shift+F2**. Capture
+stops after 60 seconds; the game stays open. Exit normally, then repeat with:
+
+```text
+bc250-benchmark run heap-on --heap on -- %command%
+```
+
+Compare from a terminal:
+
+```bash
+bc250-benchmark compare heap-off heap-on
+bc250-benchmark list
+```
+
+Results include average FPS, 1% low FPS, p99 frame time, frames over 50 ms per
+minute, and available clock, temperature, load and memory readings. The 1% low
+is the reciprocal of the mean of the slowest 1% of frame times. Higher FPS is
+better; lower frame times and fewer long frames are better.
+
+Use the same scene, resolution, graphics settings, upscaler, frame generation,
+Proton version and frame cap. Repeat each configuration at least three times;
+small differences may be normal run-to-run variation. `--notes "..."` records
+these details, and `--seconds 120` changes capture length. `--delay 30` starts
+logging automatically 30 seconds after each application's overlay initializes;
+manual capture is preferable for excluding menus and loading screens.
+
+To compare system RADV with the bundled patched RADV, use `--driver stock` and
+`--driver patched`, keeping the heap setting identical. This compares the two
+Mesa builds, not just the async patch; 32-bit games continue using stock RADV.
+Omitting these flags uses the current environment. Driver flags record the
+requested selection; a launcher or sandbox can override or hide the host driver
+and MangoHud layer. Check that the overlay appears.
+
+Runs are stored in `~/.local/share/bc250-benchmarks` (or under `XDG_DATA_HOME`),
+including `run.json`, `summary.json`, the raw CSVs and the capture configuration.
+Set `BC250_BENCHMARK_DIR` to choose another location. Labels resolve to their
+latest run; pass full run paths from `list` to compare older repetitions.
+`bc250-benchmark report LABEL` regenerates a report. If a launcher or repeated
+capture produces multiple CSVs, comparison requires selecting them explicitly:
+
+```bash
+bc250-benchmark compare heap-off heap-on --before-csv GAME_BEFORE.csv --after-csv GAME_AFTER.csv
+```
+
+The helper uses its own MangoHud configuration, replacing any personal MangoHud
+overlay settings and MangoHud FPS limit for the launched game. In-game and
+Gamescope limits still apply. Use the helper for both sides of a comparison.
+It cannot reconstruct measurements from before installation; heap and driver
+overrides let you record fresh comparisons without changing system defaults.
+
 ## Motherboard temperature sensors
+
 
 The image loads `nct6683` at boot with `force=true`, following [62fixolab's temperature sensor configuration](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images#temperature-sensors). This enables read-only motherboard monitoring; it does not configure fan control.
 
