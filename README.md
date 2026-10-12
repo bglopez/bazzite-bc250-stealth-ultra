@@ -84,7 +84,26 @@ See [62fixolab's installation guide](https://github.com/62fixolab/Latest-Bazzite
 
 ## BC-250 40CU base and CPU mitigations
 
-This custom image now inherits from `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest`. The upstream 40CU image includes **optional runtime unlock tooling**, not a guaranteed or automatically enabled 40CU mode. Consult the [upstream 40CU guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images/blob/main/docs/40cu.md) for board-specific enablement and recovery.
+This custom image inherits from `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest`. Unlike the upstream image's optional unlock, this custom image **enables full 40CU dispatch at every boot** through `bc250-force-40cu.service`, for the owner's already-tested board. It runs `bc250-cu-live-manager --yes enable all` after GPU initialization and any saved upstream CU profile, before the display manager. It does not change governor clocks or voltage. Consult the [upstream 40CU guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images/blob/main/docs/40cu.md) for status interpretation and recovery.
+
+Verify after reboot:
+
+```bash
+systemctl status bc250-force-40cu.service --no-pager
+ujust bc250-cu-status
+```
+
+Look for `SPI total : 40/40 CUs`; the driver's initialization count can still show 24 CUs.
+
+To disable automatic full dispatch and restore the stock dispatch table:
+
+```bash
+sudo systemctl mask --now bc250-force-40cu.service
+ujust bc250-cu-disable-boot
+ujust bc250-cu-restore-24
+```
+
+The mask persists across image updates. To enable it again, run `sudo systemctl unmask bc250-force-40cu.service` and reboot. If the image fails to boot, select the previous deployment from the bootloader.
 
 ### CPU vulnerability mitigations
 
@@ -100,7 +119,7 @@ cat /proc/cmdline
 
 To remove it from future builds, delete the `mitigations=off` entry in `recipes/recipe.yml` and rebuild. Kernel arguments are deployment-specific, so check the running command line after reboot.
 
-Keep a known-good deployment available for rollback. Do not enable additional compute units until you've confirmed stability at your current setting.
+Keep a known-good deployment available for rollback. This image's automatic 40CU setting is intended for the owner's tested board; stability is not guaranteed on other boards.
 
 ## Motherboard temperature sensors
 
@@ -119,4 +138,4 @@ The defaults are in `/usr/lib/modules-load.d/bc250-sensors.conf` and `/usr/lib/m
 
 On this image, run `bc250-diag` as a regular user. It prints the governor service state, BC-250 GPU clock levels (or readable hwmon frequency values), thermal sensor readings, the running kernel command line, and KFD driver-reported CU topology when available. A `*` in the GPU SCLK table marks the current level. You can save the report with `bc250-diag > bc250-report.txt`.
 
-The helper tolerates missing devices and sensors and never changes clocks, CU settings, or services. KFD topology describes what the driver initialized; it does **not** confirm the live 40CU SPI/WGP dispatch table. The upstream `bc250-cu-live-manager status` uses privileged register access, so this helper does not invoke it or prompt for `sudo`. The 40CU image includes optional tooling for up to 40 CUs, but that does not mean 40 CUs are active or stable on a particular board.
+The helper tolerates missing devices and sensors and never changes clocks, CU settings, or services. KFD topology describes what the driver initialized; it does **not** confirm the live 40CU SPI/WGP dispatch table. The upstream `bc250-cu-live-manager status` uses privileged register access, so this helper does not invoke it or prompt for `sudo`. This image requests full 40CU dispatch at boot; use `ujust bc250-cu-status` to verify the live result.

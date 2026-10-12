@@ -103,6 +103,9 @@ else
 fi
 
 section 'Compute units'
+if command -v systemctl >/dev/null 2>&1; then
+  printf 'Automatic 40CU boot service: %s\n' "$(systemctl is-active bc250-force-40cu.service 2>/dev/null || true)"
+fi
 if command -v bc250-cu-live-manager >/dev/null 2>&1; then
   printf '40CU runtime manager: installed (no register reads or writes attempted)\n'
 else
@@ -131,4 +134,4 @@ for properties in /sys/class/kfd/kfd/topology/nodes/*/properties; do
 done
 [[ $found_node -eq 1 ]] || printf 'No readable BC-250 KFD GPU topology found.\n'
 printf 'KFD topology reflects the driver view; it cannot confirm the live SPI/WGP dispatch table.\n'
-printf 'The 40CU image offers optional tooling for up to 40 CUs; active live CUs require privileged register access.\n'
+printf 'This image requests 40CU at boot; run ujust bc250-cu-status to verify live dispatch.\n'

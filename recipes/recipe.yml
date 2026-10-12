@@ -12,6 +12,7 @@ modules:
     system:
       enabled:
         - fstrim.timer
+        - bc250-force-40cu.service
   - type: script
     snippets:
       - 'mkdir -p /usr/lib/systemd/journald.conf.d'

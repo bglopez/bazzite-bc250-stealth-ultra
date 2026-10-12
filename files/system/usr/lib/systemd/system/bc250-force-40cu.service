@@ -1,0 +1,15 @@
+[Unit]
+Description=Enable full 40CU dispatch on the BC-250
+Wants=systemd-udev-settle.service
+After=systemd-udev-settle.service cyan-skillfish-governor-smu.service bc250-cu-live-manager.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/bash -c 'for _ in {1..30}; do compgen -G "/dev/dri/renderD*" >/dev/null && exit 0; sleep 1; done; exit 1'
+ExecStart=/usr/bin/bc250-cu-live-manager --yes enable all
+RemainAfterExit=yes
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target
