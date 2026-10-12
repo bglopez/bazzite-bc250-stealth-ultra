@@ -44,6 +44,9 @@ test -s /etc/pki/containers/bazzite-bc250-stealth-ultra.pub
 python3 - <<'PY'
 import json
 from pathlib import Path
+environment = Path('/etc/environment').read_text().splitlines()
+for setting in ('AMD_VULKAN_ICD=RADV', 'RADV_DEBUG=nohiz', 'MESA_LOADER_DRIVER_OVERRIDE=zink'):
+    assert setting in environment, f'Missing graphics default: {setting}'
 icd = json.loads(Path('/usr/lib/bc250-radv/share/vulkan/icd.d/radeon_icd.x86_64.json').read_text())
 assert Path(icd['ICD']['library_path']).is_file()
 policy = json.loads(Path('/etc/containers/policy.json').read_text())

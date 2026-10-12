@@ -41,4 +41,5 @@ modules:
       - bc250-custom.just
   - type: script
     scripts:
+      - configure-radv.sh
       - check-image.sh
