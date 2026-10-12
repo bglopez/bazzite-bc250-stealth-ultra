@@ -24,6 +24,6 @@ jobs:
           XONE_COMMIT="$(git ls-remote "https://github.com/${XONE_REPO}.git" HEAD | cut -f1)"
           test "$XONE_COMMIT" != "" || { echo "Unable to resolve upstream HEAD"; exit 1; }
           echo "Building xonedo upstream commit: $XONE_COMMIT"
-          docker build --build-arg XONE_COMMIT="$XONE_COMMIT" -t "ghcr.io/${GITHUB_REPOSITORY,,}:test" .
+          docker build -f Containerfile --build-arg XONE_COMMIT="$XONE_COMMIT" -t "ghcr.io/${GITHUB_REPOSITORY,,}:test" .
       - name: Push image
         run: docker push "ghcr.io/${GITHUB_REPOSITORY,,}:test"
