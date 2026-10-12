@@ -102,6 +102,19 @@ To remove it from future builds, delete the `mitigations=off` entry in `recipes/
 
 Keep a known-good deployment available for rollback. Do not enable additional compute units until you've confirmed stability at your current setting.
 
+## Motherboard temperature sensors
+
+The image loads `nct6683` at boot with `force=true`, following [62fixolab's temperature sensor configuration](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images#temperature-sensors). This enables read-only motherboard monitoring; it does not configure fan control.
+
+After installing the updated image and rebooting, run `bc250-diag` and check the thermal sensor section for `nct6683` readings. If readings are missing, check:
+
+```bash
+lsmod | grep nct6683
+sudo journalctl -k -b | grep -i nct6683
+```
+
+The defaults are in `/usr/lib/modules-load.d/bc250-sensors.conf` and `/usr/lib/modprobe.d/bc250-sensors.conf`. To disable them locally, mask both files with same-named symlinks to `/dev/null` in `/etc/modules-load.d/` and `/etc/modprobe.d/`, then reboot.
+
 ## Read-only BC-250 diagnostics
 
 On this image, run `bc250-diag` as a regular user. It prints the governor service state, BC-250 GPU clock levels (or readable hwmon frequency values), thermal sensor readings, the running kernel command line, and KFD driver-reported CU topology when available. A `*` in the GPU SCLK table marks the current level. You can save the report with `bc250-diag > bc250-report.txt`.
