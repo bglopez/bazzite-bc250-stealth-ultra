@@ -1,8 +1,13 @@
 name: bazzite-bc250-stealth-ultra
-description: Experimental BC250 Deck xonedo image
+description: Conservative BC-250 Bazzite Deck image based on 62fixolab; controller changes paused
 base-image: ghcr.io/62fixolab/bazzite-bc250-patched-deck
 image-version: latest
 modules:
+  - type: systemd
+    system:
+      enabled:
+        - fstrim.timer
   - type: script
-    scripts:
-      - build-xone.sh
+    snippets:
+      - 'mkdir -p /usr/lib/systemd/journald.conf.d'
+      - 'printf "[Journal]\\nSystemMaxUse=512M\\nSystemKeepFree=1G\\n" > /usr/lib/systemd/journald.conf.d/60-bc250-storage.conf'
