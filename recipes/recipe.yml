@@ -2,6 +2,7 @@ name: bazzite-bc250-stealth-ultra
 description: BC-250 40CU Bazzite Deck image based on 62fixolab; controller changes paused
 base-image: ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu
 image-version: latest
+alt-tags: [staging]
 modules:
   - type: files
     files:
@@ -18,3 +19,4 @@ modules:
   - type: kargs
     kargs:
       - mitigations=off
+  - type: signing

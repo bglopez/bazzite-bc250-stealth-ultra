@@ -2,7 +2,7 @@
 
 Custom Bazzite Deck image derived from [62fixolab's BC-250 patched 40CU Deck image](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images), with BC-250 diagnostics and custom system configuration.
 
-**Status: experimental. Do not rebase until the GitHub Actions build succeeds, the GHCR image exists, and bootc/OSTree compatibility has been verified.** The current workflow publishes a `:test` image without configuring this repository's own cosign signing policy. The upstream 62fixolab signature does **not** automatically sign this derived image.
+**Status: experimental. Do not rebase until the GitHub Actions build succeeds, the GHCR image exists, and bootc/OSTree compatibility has been verified.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`. The upstream 62fixolab signature does **not** automatically sign this derived image.
 
 ## Build
 
@@ -14,6 +14,12 @@ ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
 
 Check [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions) for a successful run and [Packages](https://github.com/bglopez?tab=packages) for the published image before continuing. A green workflow does not guarantee the image boots or works correctly on your hardware.
 
+## Image signing
+
+GitHub Actions requires two repository secrets: `SIGNING_SECRET` (the encrypted private key) and `COSIGN_PASSWORD` (its password). Only `cosign.pub` belongs in Git.
+
+Builds upload a unique staging tag first, sign and verify its immutable digest, then promote that same digest to `:test` and `:latest`. A signing or verification failure prevents promotion. Staging images can exist unsigned and should not be used for deployment. Signatures use the legacy attachment format for OSTree/container-policy compatibility.
+
 ## Switching from 62fixolab's BC-250 Deck image
 
 The original image uses a signed OSTree ref:
@@ -22,7 +28,7 @@ The original image uses a signed OSTree ref:
 rpm-ostree rebase ostree-image-signed:docker://ghcr.io/62fixolab/bazzite-bc250-patched-deck:latest
 ```
 
-**Do not use `ostree-image-signed:` for this custom image yet:** this repository has not configured its own signing key and verification policy. If you decide to test a **successfully built, published, and verified** image, the unsigned/experimental OCI rebase syntax is:
+The recipe installs this repository's public key and signing policy for subsequent signed updates. Your existing deployment must trust that key before a signed rebase will work. For the initial switch to a **successfully built, published, and verified** image, the unsigned/experimental OCI rebase syntax is:
 
 ```bash
 # Record the currently deployed image and available rollback deployment
@@ -33,7 +39,13 @@ sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/bglopez/bazzite-bc250-
 sudo systemctl reboot
 ```
 
-This uses an **unverified registry image** and therefore does not enforce image signature verification. Prefer configuring cosign signing and a matching verification policy before using the image as a daily driver. If the deployment is managed by bootc, use `bootc status` and follow the bootc-compatible switching workflow for that installation instead of assuming both interfaces are interchangeable.
+This uses an **unverified registry image** and therefore does not enforce image signature verification. Verify the registry signature first using the public key from a trusted checkout of this repository:
+
+```bash
+cosign verify --key cosign.pub ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
+```
+
+If the deployment is managed by bootc, use `bootc status` and follow the bootc-compatible switching workflow for that installation instead of assuming both interfaces are interchangeable.
 
 ### Verify after reboot
 

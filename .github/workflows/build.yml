@@ -7,7 +7,7 @@ on:
       - "**.md"
 concurrency:
   group: bc250-stealth-ultra-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 permissions:
   contents: read
   packages: write
@@ -17,6 +17,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Check signing key before building
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          test -n "$COSIGN_PRIVATE_KEY" || { echo 'Missing SIGNING_SECRET'; exit 1; }
+          test -n "$COSIGN_PASSWORD" || { echo 'Missing COSIGN_PASSWORD'; exit 1; }
       - name: Maximize build space
         uses: hastd/free-disk-space@68572aeaadb7f76bd408246328e95926323402b5
         with:
@@ -39,7 +46,15 @@ jobs:
           sudo install -m 0755 cosign /usr/local/bin/cosign
           rm cosign
           cosign version
-      - name: Build and push experimental image
+      - name: Validate signing key
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign public-key --key env://COSIGN_PRIVATE_KEY > "$RUNNER_TEMP/cosign.pub"
+          cmp cosign.pub "$RUNNER_TEMP/cosign.pub"
+      - name: Build and push staging image
+        id: build
         env:
           BB_BUILD_PUSH: "true"
           BB_PASSWORD: ${{ github.token }}
@@ -47,4 +62,34 @@ jobs:
           BB_REGISTRY: ghcr.io
           BB_REGISTRY_NAMESPACE: ${{ github.repository_owner }}
           RUST_LOG_STYLE: always
-        run: bluebuild build --no-sign -v recipes/recipe.yml
+        run: |
+          staging_tag="staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          sed "s/^alt-tags: \[staging\]$/alt-tags: [$staging_tag]/" recipes/recipe.yml > recipes/recipe-ci.yml
+          bluebuild build --no-sign -v recipes/recipe-ci.yml
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/bazzite-bc250-stealth-ultra"
+          digest=$(docker buildx imagetools inspect "$image:$staging_tag" --format '{{.Manifest.Digest}}')
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Sign and verify image digest
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          IMAGE: ${{ steps.build.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
+            --new-bundle-format=false --use-signing-config=false --recursive "$IMAGE@$DIGEST"
+          cosign verify --key cosign.pub "$IMAGE@$DIGEST"
+      - name: Publish verified deployment tags
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker buildx imagetools create --prefer-index=false \
+            --tag "$IMAGE:test" --tag "$IMAGE:latest" "$IMAGE@$DIGEST"
+          for tag in test latest; do
+            published=$(docker buildx imagetools inspect "$IMAGE:$tag" --format '{{.Manifest.Digest}}')
+            test "$published" = "$DIGEST"
+            cosign verify --key cosign.pub "$IMAGE@$published"
+          done
