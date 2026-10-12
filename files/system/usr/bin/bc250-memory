@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Optional disk swap; never alter Bazzite's ZRAM or sysctl defaults.
+set -euo pipefail
+
+swap_dir=/var/lib/bc250swap
+swap_file=$swap_dir/swapfile
+swap_unit=var-lib-bc250swap-swapfile.swap
+unit_path=/etc/systemd/system/$swap_unit
+marker='# Managed by bc250-memory'
+fail() { printf '%s\n' "$*" >&2; exit 1; }
+
+case ${1:-status} in
+  status)
+    free -h
+    swapon --show
+    zramctl
+    printf '\nMemory pressure:\n'
+    cat /proc/pressure/memory
+    printf '\nManaged disk swap: '
+    systemctl is-active "$swap_unit" || true
+    exit 0
+    ;;
+  setup|disable) ;;
+  *) fail 'Usage: bc250-memory [status | setup [size-in-GiB] | disable]' ;;
+esac
+
+[[ $EUID == 0 ]] || fail 'Run setup/disable with sudo.'
+exec 9>/run/bc250-memory.lock
+flock -n 9 || fail 'Another swap operation is running.'
+if [[ -e $unit_path ]]; then
+  grep -Fxq "$marker" "$unit_path" || fail "Refusing to overwrite unmanaged $unit_path"
+fi
+
+if [[ $1 == disable ]]; then
+  [[ -f $unit_path ]] || fail 'No managed disk swap unit is installed.'
+  # If swapoff cannot free enough RAM, systemctl fails and the file is retained.
+  systemctl stop "$swap_unit"
+  systemctl disable "$swap_unit"
+  printf 'Disk swap disabled; %s retained for reuse. ZRAM unchanged.\n' "$swap_file"
+  exit 0
+fi
+
+size=${2:-8}
+[[ $size =~ ^([1-9]|[12][0-9]|3[0-2])$ ]] || fail 'Size must be 1–32 GiB.'
+[[ $(findmnt -no FSTYPE -T /var/lib) == btrfs ]] || fail 'This helper requires Btrfs under /var/lib.'
+[[ ! -L $swap_dir && ! -L $swap_file && ! -L $unit_path ]] || fail 'Refusing symlink paths.'
+if [[ -e $swap_file ]]; then
+  [[ -f $unit_path ]] || fail 'An unmanaged swapfile already exists; leaving it untouched.'
+  [[ $(stat -c %s "$swap_file") == $((size * 1024 * 1024 * 1024)) ]] || fail 'Existing swapfile has a different size; resizing is not automatic.'
+else
+  available=$(df -B1 --output=avail /var/lib | tail -n 1 | tr -d ' ')
+  (( available >= (size + 10) * 1024 * 1024 * 1024 )) || fail 'Insufficient space: keep at least 10 GiB free after allocation.'
+  if [[ ! -e $swap_dir ]]; then
+    btrfs subvolume create "$swap_dir"
+  else
+    btrfs subvolume show "$swap_dir" >/dev/null || fail 'Swap directory must be a separate Btrfs subvolume.'
+  fi
+  chmod 700 "$swap_dir"
+  btrfs filesystem mkswapfile --size "${size}G" "$swap_file"
+  chmod 600 "$swap_file"
+fi
+
+cat > "$unit_path" <<EOF
+$marker
+[Unit]
+Description=Optional BC-250 disk swap (ZRAM remains preferred)
+
+[Swap]
+What=$swap_file
+Priority=10
+
+[Install]
+WantedBy=swap.target
+EOF
+systemctl daemon-reload
+systemctl enable --now "$swap_unit"
+swapon --show

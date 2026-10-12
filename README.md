@@ -14,6 +14,32 @@ ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
 
 Check [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions) for a successful run and [Packages](https://github.com/bglopez?tab=packages) for the published image before continuing. A green workflow does not guarantee the image boots or works correctly on your hardware.
 
+The workflow also checks the 62fixolab 40CU base daily at 06:17 UTC. Scheduled runs rebuild only when its digest differs from the last successful publication, or when that cached record is unavailable. Pushes and manual runs always build. The record is updated only after signing, verification, and tag promotion succeed. This publishes an available update; it does not reboot or update your host automatically.
+
+Build-time health checks require the CU manager, governor, sensor kernel module, enabled boot services, custom helpers, and image signing policy. These checks run offline without starting services or writing GPU registers.
+
+## Maintenance helpers
+
+The image extends Bazzite's `ujust` commands while retaining upstream's existing BC-250 helpers:
+
+| Command | Purpose |
+| --- | --- |
+| `ujust bc250-diagnostics` | Read-only hardware and temperature report |
+| `ujust bc250-memory-status` | RAM, ZRAM, disk swap, and memory pressure |
+| `ujust bc250-setup-swap` | Create or re-enable an optional 8 GiB disk swapfile |
+| `ujust bc250-disable-swap` | Disable disk swap while retaining its file |
+| `ujust bc250-enable-40cu-boot` | Enable automatic full dispatch and apply it now |
+| `ujust bc250-recover-stock` | Disable both boot unlock paths and restore driver dispatch |
+| `ujust bc250-unlock-logs` | Show automatic unlock logs for this boot |
+
+### Optional disk swap
+
+The image preserves Bazzite's ZRAM and memory-management defaults. The optional helper creates `/var/lib/bc250swap/swapfile` in its own Btrfs subvolume, with an 8 GiB default size and swap priority 10 (below this host's ZRAM priority 100). It requires enough space to leave at least 10 GiB free. No swapfile is created automatically at boot.
+
+Run `ujust bc250-setup-swap` to activate it persistently. For a different size on first setup, use `sudo bc250-memory setup 16` (1–32 GiB supported). Repeating setup with the same size reuses the file; existing files are not resized or overwritten. `ujust bc250-disable-swap` disables it immediately and for future boots, keeping the file for reuse. This is additional swap capacity, not hibernation configuration.
+
+Use `ujust bc250-memory-status` during a demanding game to assess memory pressure before changing memory settings.
+
 ## Image signing
 
 GitHub Actions requires two repository secrets: `SIGNING_SECRET` (the encrypted private key) and `COSIGN_PASSWORD` (its password). Only `cosign.pub` belongs in Git.

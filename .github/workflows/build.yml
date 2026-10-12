@@ -1,6 +1,8 @@
 name: Build BC250 Stealth Ultra
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * *"
   push:
     branches: [master]
     paths-ignore:
@@ -13,7 +15,40 @@ permissions:
   packages: write
   id-token: write
 jobs:
+  upstream:
+    runs-on: ubuntu-24.04
+    outputs:
+      digest: ${{ steps.base.outputs.digest }}
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - name: Resolve 62fixolab base digest
+        id: base
+        run: |
+          digest=$(docker buildx imagetools inspect \
+            ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest \
+            --format '{{.Manifest.Digest}}')
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Restore last successfully published base
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/bc250-base-digest
+          key: bc250-published-base-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: bc250-published-base-
+      - name: Compare upstream with last publication
+        id: compare
+        env:
+          BASE_DIGEST: ${{ steps.base.outputs.digest }}
+        run: |
+          previous=$(cat "$RUNNER_TEMP/bc250-base-digest" 2>/dev/null || true)
+          if [[ "$previous" == "$BASE_DIGEST" ]]; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
   bluebuild:
+    needs: upstream
+    if: github.event_name != 'schedule' || needs.upstream.outputs.changed == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -93,3 +128,12 @@ jobs:
             test "$published" = "$DIGEST"
             cosign verify --key cosign.pub "$IMAGE@$published"
           done
+      - name: Record successfully published base
+        env:
+          BASE_DIGEST: ${{ needs.upstream.outputs.digest }}
+        run: printf '%s\n' "$BASE_DIGEST" > "$RUNNER_TEMP/bc250-base-digest"
+      - name: Cache successfully published base digest
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/bc250-base-digest
+          key: bc250-published-base-${{ github.run_id }}-${{ github.run_attempt }}

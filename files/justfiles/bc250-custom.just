@@ -1,0 +1,30 @@
+# Read-only hardware, services, and temperature report
+bc250-diagnostics:
+    @bc250-diag
+
+# Read-only RAM, ZRAM, disk swap, and memory-pressure report
+bc250-memory-status:
+    @bc250-memory status
+
+# Create or re-enable an optional 8 GiB disk swapfile (preserves ZRAM)
+bc250-setup-swap:
+    @sudo bc250-memory setup
+
+# Disable managed disk swap without deleting its file
+bc250-disable-swap:
+    @sudo bc250-memory disable
+
+# Enable automatic full 40CU dispatch and apply it now
+bc250-enable-40cu-boot:
+    @sudo systemctl unmask bc250-force-40cu.service
+    @sudo systemctl enable --now bc250-force-40cu.service
+
+# Disable both boot unlock paths and restore driver dispatch
+bc250-recover-stock:
+    @sudo systemctl mask --now bc250-force-40cu.service
+    @sudo bc250-cu-live-manager uninstall-service
+    @sudo bc250-cu-live-manager --yes stock-dispatch
+
+# Show automatic unlock results from the current boot
+bc250-unlock-logs:
+    @journalctl -b -u bc250-force-40cu.service --no-pager
