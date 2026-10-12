@@ -1,0 +1,8 @@
+name: bazzite-bc250-stealth-ultra
+description: Experimental BC250 Deck xonedo image
+base-image: ghcr.io/62fixolab/bazzite-bc250-patched-deck
+image-version: latest
+modules:
+  - type: script
+    scripts:
+      - build-xone.sh
