@@ -1,0 +1,8 @@
+Source: https://github.com/tri3gubki-ops/bc250-async-compute-bazzite
+Commit: 56bf06b986f4639c32a669e9cdd31cdf7fba44b6
+License: MIT (see LICENSE)
+
+Patches, helpers, and test sources are vendored unchanged from this revision.
+The image build relocates /usr/local paths into immutable /usr paths.
+Mesa is built from 26.2.4 instead of upstream's 26.2.1; all three patches apply.
+The optional bc250-fsr4 signed-dot patch is not included.

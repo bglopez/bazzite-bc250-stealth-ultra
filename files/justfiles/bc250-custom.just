@@ -28,3 +28,19 @@ bc250-recover-stock:
 # Show automatic unlock results from the current boot
 bc250-unlock-logs:
     @journalctl -b -u bc250-force-40cu.service --no-pager
+
+# Compare stock and patched Vulkan compute-queue availability
+bc250-async-status:
+    @bc250-async-compute status
+
+# Run the upstream async compute correctness tests
+bc250-async-test:
+    @bc250-async-compute test
+
+# Restore stock Vulkan driver selection after logout/reboot
+bc250-async-disable:
+    @sudo bc250-async-compute always disable
+
+# Enable the private patched Vulkan driver after logout/reboot
+bc250-async-enable:
+    @sudo bc250-async-compute always enable

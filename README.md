@@ -4,12 +4,34 @@ Custom Bazzite Deck image derived from [62fixolab's BC-250 patched 40CU Deck ima
 
 **Status: experimental. Do not rebase until the GitHub Actions build succeeds, the GHCR image exists, and bootc/OSTree compatibility has been verified.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`. The upstream 62fixolab signature does **not** automatically sign this derived image.
 
+## Changes compared with upstream
+
+The direct base remains `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest`. Its Bazzite Deck environment, patched kernel, GPU governor, stock Mesa packages, CU manager, and existing `ujust` recipes are inherited. This repository adds the following configuration and tools:
+
+| Area | Changes in this image |
+| --- | --- |
+| 40CU dispatch | Enables `bc250-force-40cu.service` to request all 40 CUs on every boot, after GPU initialization and saved CU settings, before the display manager. Adds enable, recovery, and log commands. |
+| Vulkan async compute | Builds Mesa 26.2.4 RADV with three pinned BC-250 patches into `/usr/lib/bc250-radv`. Selects this experimental driver globally for 64-bit Vulkan applications in new desktop and game sessions; retains stock 32-bit RADV and software rendering. |
+| Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
+| Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
+| Diagnostics | Adds `bc250-diag` and `ujust bc250-diagnostics` for governor state, clocks, temperatures, kernel arguments, and available driver CU topology. |
+| Optional disk swap | Adds `bc250-memory` and `ujust` helpers for an opt-in, persistent 8 GiB Btrfs swapfile at priority 10. No swapfile is allocated by the image build or automatically at boot. |
+| Storage maintenance | Explicitly enables `fstrim.timer`; limits persistent journal use to 512 MiB while reserving 1 GiB free through a journald drop-in. |
+| CPU mitigations | Adds `mitigations=off` to the deployment's kernel arguments, with the security tradeoff described below. |
+| Signed updates | Installs this repository's cosign public key and container policy. CI signs and verifies each digest before promoting it to both `:test` and `:latest`. |
+| Rebuilds and validation | Checks for base-image changes daily at 06:17 UTC and runs offline image checks for required tools, services, sensor support, recipes, Vulkan dependencies, and signing policy. |
+
+The driver and helpers are baked into the image's OSTree-managed `/usr`; they do not require compiling or installing software on the host. Driver-selection defaults ship in `/etc`, where local changes can persist across updates. Optional disk swap is host state in `/var`, created only when requested.
+
+Governor clocks and voltages, Bazzite's ZRAM defaults, display resolution, refresh rate, game settings, and Steam launch options are not changed by this image. The optional signed-dot-product/FSR4 patch from the async project's documentation is not included. A base-image rebuild does not automatically advance the separately pinned Mesa source version.
+
 ## Build
 
-The [GitHub Actions workflow](.github/workflows/build.yml) builds the BlueBuild recipe on pushes to `master` that change non-Markdown files, or when manually dispatched. Successful builds are intended to publish:
+The [GitHub Actions workflow](.github/workflows/build.yml) builds the BlueBuild recipe on pushes to `master` that change non-Markdown files, or when manually dispatched. Successful builds publish the same verified digest to both tags:
 
 ```text
 ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
+ghcr.io/bglopez/bazzite-bc250-stealth-ultra:latest
 ```
 
 Check [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions) for a successful run and [Packages](https://github.com/bglopez?tab=packages) for the published image before continuing. A green workflow does not guarantee the image boots or works correctly on your hardware.
@@ -31,6 +53,12 @@ The image extends Bazzite's `ujust` commands while retaining upstream's existing
 | `ujust bc250-enable-40cu-boot` | Enable automatic full dispatch and apply it now |
 | `ujust bc250-recover-stock` | Disable both boot unlock paths and restore driver dispatch |
 | `ujust bc250-unlock-logs` | Show automatic unlock logs for this boot |
+| `ujust bc250-async-status` | Compare stock and patched Vulkan queue availability |
+| `ujust bc250-async-test` | Run async compute correctness tests |
+| `ujust bc250-async-disable` | Select stock Vulkan drivers for the next session |
+| `ujust bc250-async-enable` | Select patched Vulkan globally for the next session |
+
+`bc250-recover-stock` restores CU dispatch only; use `bc250-async-disable` separately to restore stock Vulkan selection.
 
 ### Optional disk swap
 
@@ -147,11 +175,40 @@ To remove it from future builds, delete the `mitigations=off` entry in `recipes/
 
 Keep a known-good deployment available for rollback. This image's automatic 40CU setting is intended for the owner's tested board; stability is not guaranteed on other boards.
 
+## Async compute Vulkan driver
+
+The image builds a private Mesa 26.2.4 RADV with the three patches from [bc250-async-compute-bazzite](https://github.com/tri3gubki-ops/bc250-async-compute-bazzite), pinned to commit `56bf06b986f4639c32a669e9cdd31cdf7fba44b6`. Mesa's source archive is SHA-256 checked. The build stage's compilers and headers are not copied into the final image.
+
+The patched 64-bit driver lives at `/usr/lib/bc250-radv` and is selected globally for new graphical sessions and login shells. Stock Mesa remains installed, including its 32-bit driver. Current system game profiles are used through drirc symlinks. The optional signed-dot-product/FSR4 patch is not included.
+
+This exposes the BC-250's dedicated compute queue. Performance gains depend on the game actually using that queue; queue availability and passing correctness tests do not establish higher FPS. Flatpak applications have separate graphics runtimes and are not validated by this integration.
+
+Hardware validation on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. This tested the driver in isolated processes, not a full desktop session or game benchmark; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2.
+
+After updating and rebooting:
+
+```bash
+ujust bc250-async-status
+ujust bc250-async-test
+# Optional sustained correctness test (seconds):
+bc250-async-compute soak 300
+```
+
+To return globally to stock Mesa, run `ujust bc250-async-disable`, then log out and back in or reboot. Re-enable with `ujust bc250-async-enable` followed by a new session. If the desktop fails, use a text console (Ctrl+Alt+F3) to run the disable command, or boot the previous deployment.
+
+For a game-specific stock-driver comparison, use Steam launch options:
+
+```text
+env -u VK_DRIVER_FILES -u VK_ICD_FILENAMES %command%
+```
+
+To record whether a game uses compute queues, use `bc250-game-trace %command%`, then inspect `bc250-async-compute trace`. Trace logging adds overhead; compare performance separately with tracing disabled.
+
 ## Motherboard temperature sensors
 
 The image loads `nct6683` at boot with `force=true`, following [62fixolab's temperature sensor configuration](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images#temperature-sensors). This enables read-only motherboard monitoring; it does not configure fan control.
 
-After installing the updated image and rebooting, run `bc250-diag` and check the thermal sensor section for `nct6683` readings. If readings are missing, check:
+After installing the updated image and rebooting, run `bc250-diag` and check the thermal sensor section for motherboard readings (reported as `nct6686` on the owner's board). If readings are missing, check:
 
 ```bash
 lsmod | grep nct6683

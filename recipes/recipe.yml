@@ -3,7 +3,22 @@ description: BC-250 40CU Bazzite Deck image based on 62fixolab with diagnostics 
 base-image: ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu
 image-version: latest
 alt-tags: [staging]
+stages:
+  - name: async-radv
+    from: registry.fedoraproject.org/fedora:44
+    modules:
+      - type: files
+        files:
+          - source: async-compute
+            destination: /tmp/bc250-async
+      - type: script
+        scripts:
+          - build-async-radv.sh
 modules:
+  - type: copy
+    from: async-radv
+    src: /out/usr/
+    dest: /usr/
   - type: files
     files:
       - source: system
