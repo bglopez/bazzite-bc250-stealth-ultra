@@ -11,19 +11,36 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build image
-        env:
-          XONE_REPO: honjow/xonedo
+      - name: Install Buildah and Podman
         run: |
-          XONE_COMMIT="$(git ls-remote "https://github.com/${XONE_REPO}.git" HEAD | cut -f1)"
-          test "$XONE_COMMIT" != "" || { echo "Unable to resolve upstream HEAD"; exit 1; }
-          echo "Building xonedo upstream commit: $XONE_COMMIT"
-          docker build -f Containerfile --build-arg XONE_COMMIT="$XONE_COMMIT" -t "ghcr.io/${GITHUB_REPOSITORY,,}:test" .
-      - name: Push image
-        run: docker push "ghcr.io/${GITHUB_REPOSITORY,,}:test"
+          sudo apt-get update
+          sudo apt-get install -y buildah podman
+          buildah version
+          podman --version
+      - name: Resolve upstream driver commit
+        id: driver
+        run: |
+          XONE_COMMIT="$(git ls-remote https://github.com/honjow/xonedo.git HEAD | cut -f1)"
+          test -n "$XONE_COMMIT"
+          echo "commit=$XONE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "Using xonedo commit: $XONE_COMMIT"
+      - name: Build image with Buildah (VFS)
+        env:
+          STORAGE_DRIVER: vfs
+          BUILDAH_ISOLATION: chroot
+          XONE_COMMIT: ${{ steps.driver.outputs.commit }}
+        run: |
+          sudo --preserve-env=STORAGE_DRIVER,BUILDAH_ISOLATION,XONE_COMMIT \
+            buildah --storage-driver vfs bud --isolation chroot \
+            --format oci --build-arg "XONE_COMMIT=$XONE_COMMIT" \
+            -f Containerfile \
+            -t ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test .
+      - name: Push image to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | sudo buildah --storage-driver vfs login \
+            -u "$GITHUB_ACTOR" --password-stdin ghcr.io
+          sudo buildah --storage-driver vfs push \
+            ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test \
+            docker://ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
