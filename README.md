@@ -2,11 +2,11 @@
 
 Custom image based directly on [upstream Bazzite Deck](https://github.com/ublue-os/bazzite), with the BC-250 GPU governor, automatic 40CU unlock, diagnostics, and custom system configuration.
 
-**Status: the previous 62fixolab-based build was tested on the owner's BC-250. The direct upstream Bazzite rebase still requires an image build and hardware boot/gameplay validation.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`.
+**Status: an earlier build was tested on the owner's BC-250. The direct upstream Bazzite rebase still requires an image build and hardware boot/gameplay validation.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`.
 
 ## Changes compared with upstream
 
-The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel, Deck environment, and stock Mesa packages. This repository explicitly installs `cyan-skillfish-governor-smu` from the `filippor/bazzite` COPR, plus `pciutils` and `umr`, and enables the governor service. The runtime 40CU unlock is downloaded directly from [WinnieLV/bc250-cu-live-manager](https://github.com/WinnieLV/bc250-cu-live-manager) at revision `abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9` during the image build and SHA-256 verified before installation. This is the same runtime manager used by 62fixolab; no 62fixolab image or repository is fetched during the build. The small command wrapper, governor profile helper, and BC-250 `ujust` recipes retain their existing FixoLab attribution. Provenance, checksums, and notices ship in `/usr/share/bc250-40cu`. This repository adds the following configuration and tools:
+The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel, Deck environment, and stock Mesa packages. This repository explicitly installs `cyan-skillfish-governor-smu` from the `filippor/bazzite` COPR, plus `pciutils` and `umr`, and enables the governor service. The runtime 40CU unlock is downloaded directly from [WinnieLV/bc250-cu-live-manager](https://github.com/WinnieLV/bc250-cu-live-manager) at revision `abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9` during the image build and SHA-256 verified before installation. Provenance, checksums, and notices ship in `/usr/share/bc250-40cu`. This repository adds the following configuration and tools:
 
 | Area | Changes in this image |
 | --- | --- |
@@ -82,67 +82,65 @@ GitHub Actions requires two repository secrets: `SIGNING_SECRET` (the encrypted 
 
 Builds upload a unique staging tag first, sign and verify its immutable digest, then promote that same digest to `:test` and `:latest`. A signing or verification failure prevents promotion. Staging images can exist unsigned and should not be used for deployment. Signatures use the legacy attachment format for OSTree/container-policy compatibility.
 
-## Switching from 62fixolab's BC-250 Deck image
+## Switching from stock Bazzite Deck
 
-The original image uses a signed OSTree ref:
+Start from stock **Bazzite Deck (KDE)** on your BC-250. These instructions use `rpm-ostree`; keep the same desktop environment when switching images. See [Bazzite's rebase guide](https://docs.bazzite.gg/Installing_and_Managing_Software/Updates_Rollbacks_and_Rebasing/rebase_guide/) for background. If your deployment is managed by bootc, use its switching workflow instead.
+
+First, confirm a successful publication in [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions). From a trusted checkout of this repository, verify the image with its public key:
 
 ```bash
-rpm-ostree rebase ostree-image-signed:docker://ghcr.io/62fixolab/bazzite-bc250-patched-deck:latest
+cosign verify --key cosign.pub ghcr.io/bglopez/bazzite-bc250-stealth-ultra:latest
 ```
 
-The recipe installs this repository's public key and signing policy for subsequent signed updates. Your existing deployment must trust that key before a signed rebase will work. For the initial switch to a **successfully built, published, and verified** image, the unverified-registry OCI rebase syntax is:
+Record your current deployment, then perform the initial rebase:
 
 ```bash
-# Record the currently deployed image and available rollback deployment
 rpm-ostree status
-
-# Only after confirming a successful build and verifying the image signature
-sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
+sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/bglopez/bazzite-bc250-stealth-ultra:latest
 sudo systemctl reboot
 ```
 
-This uses an **unverified registry image** and therefore does not enforce image signature verification. Verify the registry signature first using the public key from a trusted checkout of this repository:
+The initial rebase uses an unverified registry reference because stock Bazzite does not yet trust this image's signing key. The image installs the key and signing policy. After rebooting into it, switch to the signed reference so subsequent updates enforce signature verification:
 
 ```bash
-cosign verify --key cosign.pub ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
+sudo rpm-ostree rebase ostree-image-signed:docker://ghcr.io/bglopez/bazzite-bc250-stealth-ultra:latest
+sudo systemctl reboot
 ```
-
-If the deployment is managed by bootc, use `bootc status` and follow the bootc-compatible switching workflow for that installation instead of assuming both interfaces are interchangeable.
 
 ### Verify after reboot
 
 ```bash
 rpm-ostree status
-uname -r
-systemctl status cyan-skillfish-governor-smu --no-pager
+systemctl status cyan-skillfish-governor-smu bc250-force-40cu.service --no-pager
+ujust bc250-cu-status
+ujust bc250-async-test
 ```
 
-## Rollback and return to the original image
+Full 40CU dispatch is enabled by default; no manual unlock step is needed. Look for `SPI total : 40/40 CUs` in the CU status output.
 
-If the new deployment boots but has problems, return to the previous deployment:
+## Rollback and return to stock Bazzite
+
+To return to the previous deployment:
 
 ```bash
 sudo rpm-ostree rollback
 sudo systemctl reboot
 ```
 
-Or explicitly return to the original signed 62fixolab Deck image (assuming its signing policy is still installed and trusted):
+Check `rpm-ostree status` first: after the second rebase, the previous deployment may also be this custom image. To explicitly return to stock Bazzite Deck stable:
 
 ```bash
-sudo rpm-ostree rebase ostree-image-signed:docker://ghcr.io/62fixolab/bazzite-bc250-patched-deck:latest
+sudo rpm-ostree rebase ostree-image-signed:docker://ghcr.io/ublue-os/bazzite-deck:stable
 sudo systemctl reboot
 ```
 
-If the system does not boot, select the previous deployment from the bootloader rather than attempting commands in the broken deployment.
+If the system does not boot, select a working previous deployment from the bootloader.
 
 ## Notes
 
-- Stay on the **Deck** variant; do not switch desktop environments as part of this test.
-- The custom `:test` tag is mutable; consider pinning a tested image digest for reproducibility.
-- This project is independent of Bazzite and 62fixolab.
-
-See [62fixolab's installation guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images#install) and [Bazzite's rebase guide](https://docs.bazzite.gg/Installing_and_Managing_Software/Updates_Rollbacks_and_Rebasing/rebase_guide/) for additional background.
-
+- Stay on the **Deck (KDE)** variant when following these instructions.
+- Both `:latest` and `:test` are mutable tags pointing to the same verified build; consider pinning a tested image digest for reproducibility.
+- This project is independent of Bazzite.
 
 ## BC-250 40CU base and CPU mitigations
 
@@ -197,7 +195,7 @@ The patched 64-bit driver lives at `/usr/lib/bc250-radv` and is selected globall
 
 This exposes the BC-250's dedicated compute queue. Performance gains depend on the game actually using that queue; queue availability and passing correctness tests do not establish higher FPS. Flatpak applications have separate graphics runtimes and are not validated by this integration.
 
-Historical validation of the previous 62fixolab-based image on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. After deployment and reboot, the installed driver also passed all five correctness tests, and the owner confirmed that games work with the updated image. These checks establish functionality; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2.
+Historical validation of an earlier image build on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. After deployment and reboot, the installed driver also passed all five correctness tests, and the owner confirmed that games work with the updated image. These checks establish functionality; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2.
 
 After updating and rebooting:
 
@@ -283,7 +281,7 @@ overrides let you record fresh comparisons without changing system defaults.
 ## Motherboard temperature sensors
 
 
-The image loads `nct6683` at boot with `force=true`, following [62fixolab's temperature sensor configuration](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images#temperature-sensors). This enables read-only motherboard monitoring; it does not configure fan control.
+The image loads `nct6683` at boot with `force=true`, following the [BC-250 sensor guide](https://elektricm.github.io/amd-bc250-docs/system/sensors/). This enables read-only motherboard monitoring; it does not configure fan control.
 
 After installing the updated image and rebooting, run `bc250-diag` and check the thermal sensor section for motherboard readings (reported as `nct6686` on the owner's board). If readings are missing, check:
 
