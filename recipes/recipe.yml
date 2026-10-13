@@ -20,6 +20,7 @@ modules:
       copr:
         - filippor/bazzite
     install:
+      install-weak-deps: false
       packages:
         - cyan-skillfish-governor-smu
         - pciutils

@@ -25,6 +25,8 @@ The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel,
 
 The driver and helpers are baked into the image's OSTree-managed `/usr`; they do not require compiling or installing software on the host. Driver-selection defaults ship in `/etc`, where local changes can persist across updates. Optional disk swap is host state in `/var`, created only when requested.
 
+To limit image size, Mesa compilers, development headers, downloaded sources, and build caches stay in the disposable `async-radv` stage; only `/out/usr` is copied into the final image. The private RADV driver is stripped during installation, and the BC-250 package installation skips optional RPM dependencies while retaining required dependencies. Image checks still verify the driver's shared-library dependencies. Actual size savings require a rebuilt-image comparison. Removing files inherited from Bazzite in a later layer alone does not shrink the underlying base layers.
+
 Existing users of this custom image keep the same update tags when moving to the direct Bazzite base. The 40CU boot service remains enabled by default, with no manual unlock step required. If you previously masked it for recovery, that local mask persists; run `ujust bc250-enable-40cu-boot` when you want to enable it again.
 
 Governor clocks and voltages, Bazzite's ZRAM defaults, display resolution, refresh rate, game settings, and Steam launch options are not changed by this image. The optional signed-dot-product/FSR4 patch from the async project's documentation is not included. A base-image rebuild does not automatically advance the separately pinned Mesa source version.

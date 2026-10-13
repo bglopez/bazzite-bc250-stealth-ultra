@@ -21,7 +21,8 @@ for patch in "$sources"/patches/*.patch; do
   git apply --check "$patch"
   git apply "$patch"
 done
-meson setup /tmp/radv-build --prefix="$prefix" --libdir=lib64 --buildtype=release \
+# Strip the installed driver before copying /out into the final image layer.
+meson setup /tmp/radv-build --prefix="$prefix" --libdir=lib64 --buildtype=release -Dstrip=true \
   -Dvulkan-drivers=amd -Dgallium-drivers= -Dplatforms=wayland,x11 \
   -Dglx=disabled -Degl=disabled -Dgbm=disabled -Dopengl=false \
   -Dgles1=disabled -Dgles2=disabled -Dllvm=disabled \
