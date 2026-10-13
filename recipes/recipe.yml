@@ -33,6 +33,9 @@ modules:
     files:
       - source: system
         destination: /
+  - type: script
+    scripts:
+      - install-40cu.sh
   - type: systemd
     system:
       enabled:

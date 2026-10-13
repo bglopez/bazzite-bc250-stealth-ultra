@@ -6,7 +6,7 @@ Custom image based directly on [upstream Bazzite Deck](https://github.com/ublue-
 
 ## Changes compared with upstream
 
-The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel, Deck environment, and stock Mesa packages. This repository explicitly installs `cyan-skillfish-governor-smu` from the `filippor/bazzite` COPR, plus `pciutils` and `umr`, and enables the governor service. The CU manager, governor profile helper, and BC-250 `ujust` recipes are vendored from [62fixolab](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images) at revision `5a145f656aeb0c310aecb7657754f6085d2261cf`; provenance and notices ship in `/usr/share/bc250-40cu`. This repository adds the following configuration and tools:
+The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel, Deck environment, and stock Mesa packages. This repository explicitly installs `cyan-skillfish-governor-smu` from the `filippor/bazzite` COPR, plus `pciutils` and `umr`, and enables the governor service. The runtime 40CU unlock is downloaded directly from [WinnieLV/bc250-cu-live-manager](https://github.com/WinnieLV/bc250-cu-live-manager) at revision `abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9` during the image build and SHA-256 verified before installation. This is the same runtime manager used by 62fixolab; no 62fixolab image or repository is fetched during the build. The small command wrapper, governor profile helper, and BC-250 `ujust` recipes retain their existing FixoLab attribution. Provenance, checksums, and notices ship in `/usr/share/bc250-40cu`. This repository adds the following configuration and tools:
 
 | Area | Changes in this image |
 | --- | --- |
@@ -146,7 +146,9 @@ See [62fixolab's installation guide](https://github.com/62fixolab/Latest-Bazzite
 
 ## BC-250 40CU base and CPU mitigations
 
-This custom image uses `ghcr.io/ublue-os/bazzite-deck:stable` and includes the runtime CU manager directly. It **enables full 40CU dispatch by default at every boot** through `bc250-force-40cu.service`. No manual enable command or saved CU profile is required on a fresh installation. An existing local service mask remains respected across upgrades. It runs `bc250-cu-live-manager --yes enable all` after GPU initialization and any saved upstream CU profile, before the display manager. It does not change governor clocks or voltage. Consult the [upstream 40CU guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images/blob/main/docs/40cu.md) for status interpretation and recovery.
+This custom image uses `ghcr.io/ublue-os/bazzite-deck:stable` and includes the runtime CU manager directly. It **enables full 40CU dispatch by default at every boot** through `bc250-force-40cu.service`. No manual enable command or saved CU profile is required on a fresh installation. An existing local service mask remains respected across upgrades. It runs `bc250-cu-live-manager --yes enable all` after GPU initialization and any saved upstream CU profile, before the display manager. It does not change governor clocks or voltage. Consult the [pinned upstream manager guide](https://github.com/WinnieLV/bc250-cu-live-manager/blob/abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9/README.md) for status interpretation and recovery.
+
+The unlock revision is pinned in `files/system/usr/share/bc250-40cu/vendor/bc250-cu-live-manager.UPSTREAM_REF`, with file hashes in `files/system/usr/share/bc250-40cu/SHA256SUMS`. Update both when intentionally upgrading the manager. Downloads happen only during image builds; boot-time unlocking works offline. The separate `duggasco/bc250-40cu-unlock` kernel-patch/research bundle is not required by this runtime service.
 
 Verify after reboot:
 

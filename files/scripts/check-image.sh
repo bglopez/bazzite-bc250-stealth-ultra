@@ -15,6 +15,7 @@ bc250-cu-live-manager --help >/dev/null
 bc250-governor-profile --help >/dev/null
 test -s /usr/share/bc250-40cu/UPSTREAM
 test -s /usr/share/bc250-40cu/FIXOLAB-LICENSE
+(cd /usr/share/bc250-40cu/vendor/bc250-cu-live-manager && sha256sum --check /usr/share/bc250-40cu/SHA256SUMS)
 for service in cyan-skillfish-governor-smu.service bc250-force-40cu.service; do
   systemctl --root=/ is-enabled "$service"
 done
