@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Offline image checks: no GPU register writes or service starts during builds.
 set -euo pipefail
+rpm -q cyan-skillfish-governor-smu pciutils umr
 for command in bc250-cu-live-manager bc250-governor-profile cyan-skillfish-governor-smu umr ujust just btrfs swapon zramctl vulkaninfo bc250-async-compute bc250-benchmark mangohud; do
   command -v "$command" >/dev/null
 done
 for script in /usr/bin/bc250-diag /usr/bin/bc250-memory /usr/bin/bc250-cu-live-manager \
+  /usr/bin/bc250-governor-profile \
   /usr/share/bc250-40cu/vendor/bc250-cu-live-manager/bc250-cu-live-manager.sh; do
   test -x "$script"
   bash -n "$script"
 done
+bc250-cu-live-manager --help >/dev/null
+bc250-governor-profile --help >/dev/null
+test -s /usr/share/bc250-40cu/UPSTREAM
+test -s /usr/share/bc250-40cu/FIXOLAB-LICENSE
 for service in cyan-skillfish-governor-smu.service bc250-force-40cu.service; do
   systemctl --root=/ is-enabled "$service"
 done
@@ -23,6 +29,7 @@ done
 "$found_kernel"
 for recipe in bc250-diagnostics bc250-memory-status bc250-setup-swap bc250-disable-swap \
   bc250-enable-40cu-boot bc250-recover-stock bc250-unlock-logs bc250-cu-status \
+  bc250-cu-disable-boot bc250-cu-restore-24 bc250-cu-save-boot \
   bc250-async-status bc250-async-test bc250-async-disable bc250-async-enable \
   bc250-benchmark-help bc250-benchmark-list; do
   ujust --show "$recipe" >/dev/null

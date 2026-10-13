@@ -1,12 +1,12 @@
 # Bazzite BC-250
 
-Custom Bazzite Deck image derived from [62fixolab's BC-250 patched 40CU Deck image](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images), with BC-250 diagnostics and custom system configuration.
+Custom image based directly on [upstream Bazzite Deck](https://github.com/ublue-os/bazzite), with the BC-250 GPU governor, automatic 40CU unlock, diagnostics, and custom system configuration.
 
-**Status: tested on the owner's BC-250, including successful boot, async compute correctness tests, and owner-confirmed gameplay.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`. The upstream 62fixolab signature does **not** automatically sign this derived image.
+**Status: the previous 62fixolab-based build was tested on the owner's BC-250. The direct upstream Bazzite rebase still requires an image build and hardware boot/gameplay validation.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`.
 
 ## Changes compared with upstream
 
-The direct base remains `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest`. Its Bazzite Deck environment, patched kernel, GPU governor, stock Mesa packages, CU manager, and existing `ujust` recipes are inherited. This repository adds the following configuration and tools:
+The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel, Deck environment, and stock Mesa packages. This repository explicitly installs `cyan-skillfish-governor-smu` from the `filippor/bazzite` COPR, plus `pciutils` and `umr`, and enables the governor service. The CU manager, governor profile helper, and BC-250 `ujust` recipes are vendored from [62fixolab](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images) at revision `5a145f656aeb0c310aecb7657754f6085d2261cf`; provenance and notices ship in `/usr/share/bc250-40cu`. This repository adds the following configuration and tools:
 
 | Area | Changes in this image |
 | --- | --- |
@@ -25,6 +25,8 @@ The direct base remains `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:lates
 
 The driver and helpers are baked into the image's OSTree-managed `/usr`; they do not require compiling or installing software on the host. Driver-selection defaults ship in `/etc`, where local changes can persist across updates. Optional disk swap is host state in `/var`, created only when requested.
 
+Existing users of this custom image keep the same update tags when moving to the direct Bazzite base. The 40CU boot service remains enabled by default, with no manual unlock step required. If you previously masked it for recovery, that local mask persists; run `ujust bc250-enable-40cu-boot` when you want to enable it again.
+
 Governor clocks and voltages, Bazzite's ZRAM defaults, display resolution, refresh rate, game settings, and Steam launch options are not changed by this image. The optional signed-dot-product/FSR4 patch from the async project's documentation is not included. A base-image rebuild does not automatically advance the separately pinned Mesa source version.
 
 ## Build
@@ -38,13 +40,13 @@ ghcr.io/bglopez/bazzite-bc250-stealth-ultra:latest
 
 Check [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions) for a successful run and [Packages](https://github.com/bglopez?tab=packages) for the published image before continuing. A green workflow does not guarantee the image boots or works correctly on your hardware.
 
-The workflow also checks the 62fixolab 40CU base daily at 06:17 UTC. Scheduled runs rebuild only when its digest differs from the last successful publication, or when that cached record is unavailable. Pushes and manual runs always build. The record is updated only after signing, verification, and tag promotion succeed. This publishes an available update; it does not reboot or update your host automatically.
+The workflow also checks the upstream Bazzite Deck stable base daily at 06:17 UTC. Scheduled runs rebuild only when its digest differs from the last successful publication, or when that cached record is unavailable. Pushes and manual runs always build. The record is updated only after signing, verification, and tag promotion succeed. This publishes an available update; it does not reboot or update your host automatically.
 
 Build-time health checks require the CU manager, governor, sensor kernel module, enabled boot services, custom helpers, and image signing policy. These checks run offline without starting services or writing GPU registers.
 
 ## Maintenance helpers
 
-The image extends Bazzite's `ujust` commands while retaining upstream's existing BC-250 helpers:
+The image extends Bazzite's `ujust` commands with the vendored BC-250 helpers:
 
 | Command | Purpose |
 | --- | --- |
@@ -142,7 +144,7 @@ See [62fixolab's installation guide](https://github.com/62fixolab/Latest-Bazzite
 
 ## BC-250 40CU base and CPU mitigations
 
-This custom image inherits from `ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest`. Unlike the upstream image's optional unlock, this custom image **enables full 40CU dispatch at every boot** through `bc250-force-40cu.service`, for the owner's already-tested board. It runs `bc250-cu-live-manager --yes enable all` after GPU initialization and any saved upstream CU profile, before the display manager. It does not change governor clocks or voltage. Consult the [upstream 40CU guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images/blob/main/docs/40cu.md) for status interpretation and recovery.
+This custom image uses `ghcr.io/ublue-os/bazzite-deck:stable` and includes the runtime CU manager directly. It **enables full 40CU dispatch by default at every boot** through `bc250-force-40cu.service`. No manual enable command or saved CU profile is required on a fresh installation. An existing local service mask remains respected across upgrades. It runs `bc250-cu-live-manager --yes enable all` after GPU initialization and any saved upstream CU profile, before the display manager. It does not change governor clocks or voltage. Consult the [upstream 40CU guide](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images/blob/main/docs/40cu.md) for status interpretation and recovery.
 
 Verify after reboot:
 
@@ -191,7 +193,7 @@ The patched 64-bit driver lives at `/usr/lib/bc250-radv` and is selected globall
 
 This exposes the BC-250's dedicated compute queue. Performance gains depend on the game actually using that queue; queue availability and passing correctness tests do not establish higher FPS. Flatpak applications have separate graphics runtimes and are not validated by this integration.
 
-Hardware validation on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. After deployment and reboot, the installed driver also passed all five correctness tests, and the owner confirmed that games work with the updated image. These checks establish functionality; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2.
+Historical validation of the previous 62fixolab-based image on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. After deployment and reboot, the installed driver also passed all five correctness tests, and the owner confirmed that games work with the updated image. These checks establish functionality; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2.
 
 After updating and rebooting:
 

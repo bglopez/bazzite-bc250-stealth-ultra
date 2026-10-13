@@ -1,0 +1,7 @@
+Source: https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images
+Revision: 5a145f656aeb0c310aecb7657754f6085d2261cf
+Includes: CU manager wrapper, governor profile helper, bc250-40cu.just, and runtime CU manager.
+Runtime manager: https://github.com/WinnieLV/bc250-cu-live-manager
+Runtime manager revision: abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9
+Only runtime tooling is included; the separate kernel patch/research bundle is not copied.
+FIXOLAB-LICENSE covers FixoLab original files; see FIXOLAB-NOTICE for third-party attribution.

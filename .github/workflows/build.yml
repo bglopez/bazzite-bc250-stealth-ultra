@@ -21,11 +21,11 @@ jobs:
       digest: ${{ steps.base.outputs.digest }}
       changed: ${{ steps.compare.outputs.changed }}
     steps:
-      - name: Resolve 62fixolab base digest
+      - name: Resolve upstream Bazzite Deck base digest
         id: base
         run: |
           digest=$(docker buildx imagetools inspect \
-            ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu:latest \
+            ghcr.io/ublue-os/bazzite-deck:stable \
             --format '{{.Manifest.Digest}}')
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           echo "digest=$digest" >> "$GITHUB_OUTPUT"

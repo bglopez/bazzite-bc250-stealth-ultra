@@ -1,7 +1,7 @@
 name: bazzite-bc250-stealth-ultra
-description: BC-250 40CU Bazzite Deck image based on 62fixolab with diagnostics and recovery helpers
-base-image: ghcr.io/62fixolab/bazzite-bc250-patched-deck-40cu
-image-version: latest
+description: BC-250 40CU Bazzite Deck image based on upstream Bazzite with diagnostics and recovery helpers
+base-image: ghcr.io/ublue-os/bazzite-deck
+image-version: stable
 alt-tags: [staging]
 stages:
   - name: async-radv
@@ -15,6 +15,15 @@ stages:
         scripts:
           - build-async-radv.sh
 modules:
+  - type: dnf
+    repos:
+      copr:
+        - filippor/bazzite
+    install:
+      packages:
+        - cyan-skillfish-governor-smu
+        - pciutils
+        - umr
   - type: copy
     from: async-radv
     src: /out/usr/
@@ -26,6 +35,7 @@ modules:
   - type: systemd
     system:
       enabled:
+        - cyan-skillfish-governor-smu.service
         - fstrim.timer
         - bc250-force-40cu.service
   - type: script
@@ -38,6 +48,7 @@ modules:
   - type: signing
   - type: justfiles
     include:
+      - bc250-40cu.just
       - bc250-custom.just
   - type: script
     scripts:
