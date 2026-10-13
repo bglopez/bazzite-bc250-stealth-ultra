@@ -16,6 +16,7 @@ The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel,
 | Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
 | Game benchmarks | Adds `bc250-benchmark` for MangoHud frame captures, system context, and before/after comparisons. Driver and unified-heap overrides apply only to the launched game. |
 | Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
+| CPU ACPI fix | Includes the stock 6-core/12-thread CPU's C-state and P-state tables in the early initramfs by default; rebuilds and checks the initramfs with each image build. |
 | Diagnostics | Adds `bc250-diag` and `ujust bc250-diagnostics` for governor state, clocks, temperatures, kernel arguments, and available driver CU topology. |
 | Optional disk swap | Adds `bc250-memory` and `ujust` helpers for an opt-in, persistent 8 GiB Btrfs swapfile at priority 10. No swapfile is allocated by the image build or automatically at boot. |
 | Storage maintenance | Explicitly enables `fstrim.timer`; limits persistent journal use to 512 MiB while reserving 1 GiB free through a journald drop-in. |
@@ -277,6 +278,23 @@ overlay settings and MangoHud FPS limit for the launched game. In-game and
 Gamescope limits still apply. Use the helper for both sides of a comparison.
 It cannot reconstruct measurements from before installation; heap and driver
 overrides let you record fresh comparisons without changing system defaults.
+
+## CPU ACPI fix (6 cores / 12 threads)
+
+The image includes the unmodified `SSDT-CST.aml` and `SSDT-PST.aml` tables from [bc250-collective/bc250-acpi-fix](https://github.com/bc250-collective/bc250-acpi-fix/tree/1594d72f11d674bd7e46f4e51eee4216155e52fb), pinned to revision `1594d72f11d674bd7e46f4e51eee4216155e52fb`. They target the stock CPU's 12 logical processors (`P000`–`P00B`) and provide ACPI definitions for CPU idle states and frequency scaling. These are **not the tables for an unlocked 8-core/16-thread CPU**. The separate 40CU GPU unlock remains enabled.
+
+Tables, source files, checksums, and provenance live in `/usr/share/bc250-acpi`. The dracut configuration at `/usr/lib/dracut/dracut.conf.d/95-bc250-acpi.conf` enables early ACPI table loading. BlueBuild regenerates the image's initramfs, and build checks verify the exact tables are present in its uncompressed early archive for every installed kernel. No manual bootloader edits or host-side `rpm-ostree initramfs --enable` step are required for a normal deployment of the image.
+
+After updating and rebooting, verify the running system:
+
+```bash
+sudo journalctl -k -b | grep -Ei 'ACPI.*(SSDT|override|upgrade)|lockdown'
+cat /sys/devices/system/cpu/cpu0/cpuidle/state*/name
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies
+```
+
+Build checks establish packaging, not runtime support or power savings. The original upstream README reports incomplete support, while the [newer BC-250 guide](https://elektricm.github.io/amd-bc250-docs/system/governor/#acpi-fix-installation) reports working C/P-states on a newer kernel. Confirm behavior on your BIOS and kernel; Secure Boot/lockdown may prevent ACPI overrides. CPU governor selection remains under Bazzite's power-management policy. If the updated image causes boot or stability problems, boot a previous deployment without these tables and roll back.
 
 ## Motherboard temperature sensors
 

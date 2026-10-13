@@ -57,4 +57,8 @@ modules:
   - type: script
     scripts:
       - configure-radv.sh
+  - type: initramfs
+  - type: script
+    scripts:
+      - check-acpi.sh
       - check-image.sh
