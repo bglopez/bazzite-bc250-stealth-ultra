@@ -17,7 +17,6 @@ The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel,
 | Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
 | Game benchmarks | Adds `bc250-benchmark` for MangoHud frame captures, system context, and before/after comparisons. Driver and unified-heap overrides apply only to the launched game. |
 | Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
-| Deck UI stability | Disables and masks Bazzite's Handheld Daemon (`hhd`), which has no BC-250 support and fail-loops into micro-stutter. Run `ujust bc250-enable-hhd` only if you need it back. |
 | CPU ACPI fix | Includes e-tho `bc250-acpi-fix` v1.1.1 CPU idle/P-state/stub tables in the early initramfs by default; rebuilds and checks the initramfs with each image build. |
 | Memory policy | Disables ZRAM and enables **zswap with lz4** (`vm.swappiness=180`), matching community guidance for 16 GB BC-250 boards. Optional disk swapfile remains opt-in. |
 | Diagnostics | Adds `bc250-diag` and `ujust bc250-diagnostics` for governor state, clocks, temperatures, kernel arguments, and available driver CU topology. |
@@ -94,7 +93,6 @@ The image extends Bazzite's `ujust` commands with the vendored BC-250 helpers:
 | `ujust bc250-cu-governor-restore` | Restore the pre-sweet-spot governor config |
 | `ujust bc250-disable-suspend` | Mask system suspend/hibernate targets (opt-in) |
 | `ujust bc250-enable-suspend` | Unmask suspend/hibernate targets |
-| `ujust bc250-enable-hhd` | Re-enable Handheld Daemon (normally masked on this board) |
 | `ujust bc250-async-status` | Compare stock and patched Vulkan queue availability |
 | `ujust bc250-async-test` | Run async compute correctness tests |
 | `ujust bc250-async-disable` | Select stock Vulkan drivers for the next session |
@@ -405,7 +403,7 @@ Board quirks the image cannot fix, plus host-side workarounds from the BC-250 co
 
 | Symptom | What to do |
 | --- | --- |
-| Deck UI micro-stutter every few seconds | HHD fail-loops on BC-250. This image masks it; if you re-enabled it, `sudo systemctl disable --now hhd && sudo systemctl mask hhd` |
+| Deck UI micro-stutter every few seconds | HHD fail-loops on BC-250. Mask it: `sudo systemctl disable --now hhd && sudo systemctl mask hhd` |
 | Box dead after sitting idle (no wake, only power cycle) | S3/S4 sleep does not work on this SMU. Run `ujust bc250-disable-suspend`, and disable Gamescope/Game Mode idle suspend separately |
 | GPU stuck at 1500 MHz | Governor not running, or voltage below 700 mV locks the clock. `systemctl status cyan-skillfish-governor-smu`; check `pp_dpm_sclk` on **both** `card0` and `card1` |
 | Graphics artifacts / black squares | `RADV_DEBUG=nohiz` is already global; for stubborn cases try `RADV_DEBUG=aco AMD_DEBUG=aco %command%` per game |

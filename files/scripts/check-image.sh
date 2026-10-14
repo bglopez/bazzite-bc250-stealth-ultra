@@ -19,10 +19,6 @@ test -s /usr/share/bc250-40cu/FIXOLAB-LICENSE
 for service in cyan-skillfish-governor-smu.service bc250-force-40cu.service; do
   systemctl --root=/ is-enabled "$service"
 done
-# Handheld Daemon fail-loops on BC-250 and causes Deck UI micro-stutter.
-# Mask is a /dev/null symlink so it works even when the unit file is absent.
-test -L /etc/systemd/system/hhd.service
-test "$(readlink /etc/systemd/system/hhd.service)" = /dev/null
 test -s /usr/lib/modules-load.d/bc250-sensors.conf
 test -s /usr/lib/modprobe.d/bc250-sensors.conf
 # 40CU sweet spot is the image default (stock governor curve is 24CU-oriented).
@@ -53,7 +49,7 @@ for recipe in bc250-diagnostics bc250-memory-status bc250-setup-swap bc250-disab
   bc250-cu-menu bc250-cu-dry-run-40 bc250-cu-enable-40 \
   bc250-cu-disable-boot bc250-cu-restore-24 bc250-cu-save-boot \
   bc250-cu-sweet-spot bc250-cu-governor-restore \
-  bc250-disable-suspend bc250-enable-suspend bc250-enable-hhd \
+  bc250-disable-suspend bc250-enable-suspend \
   bc250-async-status bc250-async-test bc250-async-disable bc250-async-enable \
   bc250-benchmark-help bc250-benchmark-list; do
   ujust --show "$recipe" >/dev/null

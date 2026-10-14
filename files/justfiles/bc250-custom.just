@@ -23,11 +23,6 @@ bc250-disable-suspend:
 bc250-enable-suspend:
     @sudo systemctl unmask suspend.target hybrid-sleep.target hibernate.target
 
-# Unmask Handheld Daemon (HHD); leave masked on BC-250 unless you need it
-bc250-enable-hhd:
-    @sudo systemctl unmask hhd.service
-    @sudo systemctl enable --now hhd.service
-
 # Enable automatic full 40CU dispatch and apply it now
 bc250-enable-40cu-boot:
     @sudo systemctl unmask bc250-force-40cu.service
