@@ -14,6 +14,20 @@ bc250-setup-swap:
 bc250-disable-swap:
     @sudo bc250-memory disable
 
+# Mask system suspend targets (s2idle resume is unreliable on BC-250)
+bc250-disable-suspend:
+    @sudo systemctl mask --now suspend.target hybrid-sleep.target hibernate.target
+    @echo "Suspend/hibernate targets masked. Also disable Gamescope idle suspend if you use Game Mode."
+
+# Restore suspend targets
+bc250-enable-suspend:
+    @sudo systemctl unmask suspend.target hybrid-sleep.target hibernate.target
+
+# Unmask Handheld Daemon (HHD); leave masked on BC-250 unless you need it
+bc250-enable-hhd:
+    @sudo systemctl unmask hhd.service
+    @sudo systemctl enable --now hhd.service
+
 # Enable automatic full 40CU dispatch and apply it now
 bc250-enable-40cu-boot:
     @sudo systemctl unmask bc250-force-40cu.service

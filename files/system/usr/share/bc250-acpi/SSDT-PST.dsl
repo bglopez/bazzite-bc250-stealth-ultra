@@ -1,4 +1,10 @@
-// SSDT-PST.dsl — attach P-states to \_PR.P000..P00B
+// Publishes the eight frequency states the firmware does not expose.
+//
+// The firmware has a frequency table and a method on each CPU that loads
+// it, but that method never runs because its condition is not satisfied.
+//
+// Frequencies come from the hardware's frequency state registers.
+
 DefinitionBlock ("", "SSDT", 2, "HACK", "PSTATES", 0x00000001)
 {
     External (\_PR, DeviceObj)
@@ -14,15 +20,17 @@ DefinitionBlock ("", "SSDT", 2, "HACK", "PSTATES", 0x00000001)
     External (\_PR.P009, ProcessorObj)
     External (\_PR.P00A, ProcessorObj)
     External (\_PR.P00B, ProcessorObj)
+    External (\_PR.P00C, ProcessorObj)
+    External (\_PR.P00D, ProcessorObj)
+    External (\_PR.P00E, ProcessorObj)
+    External (\_PR.P00F, ProcessorObj)
 
-    // _PCT content (FFixedHW). Use 4-arg Register form to keep iasl happy.
     Name (PPCT, Package ()
     {
-        ResourceTemplate () { Register (FFixedHW, 64, 0, 0x00000000C0010062) }, // PerfCtl (informational)
-        ResourceTemplate () { Register (FFixedHW, 64, 0, 0x0000000000000000) }  // PerfSts (informational)
+        ResourceTemplate () { Register (FFixedHW, 64, 0, 0x00000000C0010062) },
+        ResourceTemplate () { Register (FFixedHW, 64, 0, 0x0000000000000000) }
     })
 
-    // _PSS entries: {Freq MHz, Power mW, TransitionLatency us, BusMasterLatency us, Control, Status}
     Name (PPSS, Package ()
     {
         Package () { 3200, 0, 1000, 1000, 0, 0 },
@@ -35,23 +43,117 @@ DefinitionBlock ("", "SSDT", 2, "HACK", "PSTATES", 0x00000001)
         Package () {  800, 0, 1000, 1000, 7, 7 }
     })
 
-    // Correctly-shaped _PSD: Package-of-one-Package (5 DWORDs)
-    Name (PPSD, Package () { Package () { 0x05, 0x00, 0x00000001, 0x000000FE, 0x00000002 } })
+    // One domain per physical core, both threads in it. Must match SSDT-CPU.
 
-    Scope (\_PR)
+    Scope (\_PR.P000)
     {
-        Scope (P000) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P001) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P002) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P003) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P004) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P005) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P006) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P007) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P008) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P009) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P00A) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
-        Scope (P00B) { Method (_PCT,0,NotSerialized){ Return(PPCT) } Method (_PSS,0,NotSerialized){ Return(PPSS) } Method (_PSD,0,NotSerialized){ Return(PPSD) } }
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000000, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P001)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000000, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P002)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000001, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P003)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000001, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P004)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000002, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P005)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000002, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P006)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000003, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P007)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000003, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P008)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000004, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P009)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000004, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P00A)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000005, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P00B)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000005, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P00C)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000006, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P00D)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000006, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P00E)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000007, 0x000000FE, 0x00000002 } })
+    }
+
+    Scope (\_PR.P00F)
+    {
+        Method (_PCT, 0, NotSerialized) { Return (PPCT) }
+        Method (_PSS, 0, NotSerialized) { Return (PPSS) }
+        Name (_PSD, Package (0x01) { Package (0x05) { 0x05, 0x00, 0x00000007, 0x000000FE, 0x00000002 } })
     }
 }
-

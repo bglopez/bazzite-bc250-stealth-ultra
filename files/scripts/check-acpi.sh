@@ -11,12 +11,17 @@ import struct
 import sys
 
 share = Path(sys.argv[1])
-for name, table_id in [('SSDT-CST.aml', b'P_CST3'), ('SSDT-PST.aml', b'PSTATES')]:
+# e-tho/bc250-acpi-fix v1.1.1: SSDT-CPU (idle), SSDT-PST (P-states), SSDT-STUBS (no-op methods).
+for name, oem, table_id in [
+    ('SSDT-CPU.aml', b'AMD', b'AMD CPU'),
+    ('SSDT-PST.aml', b'HACK', b'PSTATES'),
+    ('SSDT-STUBS.aml', b'HACK', b'STUBS'),
+]:
     data = (share / name).read_bytes()
     assert data[:4] == b'SSDT', f'{name}: not an SSDT'
     assert struct.unpack_from('<I', data, 4)[0] == len(data), f'{name}: invalid length'
     assert sum(data) % 256 == 0, f'{name}: invalid ACPI checksum'
-    assert data[10:16].rstrip(b' \0') == b'HACK', f'{name}: unexpected OEM'
+    assert data[10:16].rstrip(b' \0') == oem, f'{name}: unexpected OEM'
     assert data[16:24].rstrip(b' \0') == table_id, f'{name}: unexpected table ID'
 PY
 workdir=$(mktemp -d)
@@ -33,7 +38,7 @@ for modules in "$root"/usr/lib/modules/*; do
   # compressed initramfs is too late for the kernel's ACPI table loader.
   (cd "$destination" && cpio --extract --make-directories --quiet \
     --no-absolute-filenames 'kernel/firmware/acpi/*.aml' < "$image")
-  for table in SSDT-CST.aml SSDT-PST.aml; do
+  for table in SSDT-CPU.aml SSDT-PST.aml SSDT-STUBS.aml; do
     python3 - "$share/$table" "$destination/kernel/firmware/acpi/$table" <<'PY'
 from pathlib import Path
 import sys
@@ -43,4 +48,4 @@ PY
   done
 done
 "$found_kernel"
-printf 'BC-250 6c/12t ACPI tables verified in all early initramfs archives.\n'
+printf 'BC-250 e-tho ACPI tables verified in all early initramfs archives.\n'

@@ -36,12 +36,22 @@ modules:
   - type: script
     scripts:
       - install-40cu.sh
+  # 40CU is enabled at every boot; cap the governor at the community
+  # 40CU sweet spot (1500 MHz / 900 mV) so stock 24CU defaults cannot
+  # over-drive the unlocked board. Helper backs up the package config.
+  - type: script
+    snippets:
+      - 'bc250-governor-profile sweet-spot || true'
   - type: systemd
     system:
       enabled:
         - cyan-skillfish-governor-smu.service
         - fstrim.timer
         - bc250-force-40cu.service
+      disabled:
+        - hhd.service
+      masked:
+        - hhd.service
   - type: script
     snippets:
       - 'mkdir -p /usr/lib/systemd/journald.conf.d'
@@ -49,6 +59,9 @@ modules:
   - type: kargs
     kargs:
       - mitigations=off
+      - zswap.enabled=1
+      - zswap.max_pool_percent=25
+      - zswap.compressor=lz4
   - type: signing
   - type: justfiles
     include:

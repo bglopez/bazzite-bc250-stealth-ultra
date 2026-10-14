@@ -19,8 +19,26 @@ test -s /usr/share/bc250-40cu/FIXOLAB-LICENSE
 for service in cyan-skillfish-governor-smu.service bc250-force-40cu.service; do
   systemctl --root=/ is-enabled "$service"
 done
+# Handheld Daemon fail-loops on BC-250 and causes Deck UI micro-stutter.
+test "$(systemctl --root=/ is-enabled hhd.service)" = masked
 test -s /usr/lib/modules-load.d/bc250-sensors.conf
 test -s /usr/lib/modprobe.d/bc250-sensors.conf
+# 40CU sweet spot is the image default (stock governor curve is 24CU-oriented).
+test -s /etc/cyan-skillfish-governor-smu/config.toml
+grep -q '^max = 1500$' /etc/cyan-skillfish-governor-smu/config.toml
+grep -q '^voltage = 900$' /etc/cyan-skillfish-governor-smu/config.toml
+# Split-lock mitigation ships in the image (GDDR6 latency amplifies the penalty).
+test -s /usr/lib/sysctl.d/90-bc250-split-lock.conf
+grep -q '^kernel.split_lock_mitigate=0$' /usr/lib/sysctl.d/90-bc250-split-lock.conf
+# zswap default policy (ZRAM off, swappiness for zswap).
+test -s /etc/systemd/zram-generator.conf
+test -s /usr/lib/sysctl.d/90-bc250-zswap.conf
+grep -q '^vm.swappiness=180$' /usr/lib/sysctl.d/90-bc250-zswap.conf
+test -s /usr/lib/dracut/dracut.conf.d/95-bc250-zswap.conf
+# e-tho ACPI tables present.
+for table in SSDT-CPU.aml SSDT-PST.aml SSDT-STUBS.aml; do
+  test -s "/usr/share/bc250-acpi/$table"
+done
 found_kernel=false
 for modules in /usr/lib/modules/*; do
   test -d "$modules" || continue
@@ -30,7 +48,10 @@ done
 "$found_kernel"
 for recipe in bc250-diagnostics bc250-memory-status bc250-setup-swap bc250-disable-swap \
   bc250-enable-40cu-boot bc250-recover-stock bc250-unlock-logs bc250-cu-status \
+  bc250-cu-menu bc250-cu-dry-run-40 bc250-cu-enable-40 \
   bc250-cu-disable-boot bc250-cu-restore-24 bc250-cu-save-boot \
+  bc250-cu-sweet-spot bc250-cu-governor-restore \
+  bc250-disable-suspend bc250-enable-suspend bc250-enable-hhd \
   bc250-async-status bc250-async-test bc250-async-disable bc250-async-enable \
   bc250-benchmark-help bc250-benchmark-list; do
   ujust --show "$recipe" >/dev/null

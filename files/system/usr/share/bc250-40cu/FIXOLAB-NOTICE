@@ -1,14 +1,10 @@
-Bazzite AMD BC-250 Patched Images
+Bazzite AMD BC-250 Patched Images — third-party attribution
 Copyright 2026 FixoLab
 
-This repository's original files are licensed under the MIT License unless a
-file or vendored directory states otherwise.
-
-The root LICENSE file applies only to this repository's original files. It does
-not relicense third-party projects, vendored sources, base images, packages, or
-container contents.
-
-This project builds on and/or packages work from the following projects:
+This image packages or builds on work from the following projects. FixoLab
+original files are licensed under the MIT License in FIXOLAB-LICENSE. That
+license does not relicense third-party projects, fetched sources, base images,
+packages, or container contents.
 
 - Bazzite
   https://github.com/ublue-os/bazzite
@@ -25,20 +21,20 @@ This project builds on and/or packages work from the following projects:
   License: MIT License
   Note: installed from COPR; not vendored as source in this repository.
 
-- bc250-40cu-unlock
-  https://github.com/duggasco/bc250-40cu-unlock
-  Upstream declared license: GPL-2.0
-  Vendored paths:
-    vendor/bc250-40cu-unlock/
-    files/system/usr/share/bc250-40cu/vendor/bc250-40cu-unlock/
-
 - bc250-cu-live-manager
   https://github.com/WinnieLV/bc250-cu-live-manager
   Upstream declared license: none detected at time of review.
-  Vendored paths:
-    vendor/bc250-cu-live-manager/
-    files/system/usr/share/bc250-40cu/vendor/bc250-cu-live-manager/
+  Fetched at image build time by install-40cu.sh at the revision recorded in
+  vendor/bc250-cu-live-manager.UPSTREAM_REF and verified against SHA256SUMS.
+  Installed under /usr/share/bc250-40cu/vendor/bc250-cu-live-manager/.
+  The git tree does not carry a source checkout.
 
-The experimental 40CU images include third-party research/tooling for BC-250
-runtime CU testing. Those third-party files remain subject to their upstream
-authors' licensing terms and notices.
+- duggasco/bc250-40cu-unlock (research only — NOT included)
+  https://github.com/duggasco/bc250-40cu-unlock
+  Upstream declared license: GPL-2.0
+  This image does not vendor or install that kernel-patch/research bundle.
+  It is referenced for methodology and thermal guidance only.
+
+Runtime CU tooling remains subject to its upstream authors' licensing terms
+and notices. Compatibility helpers adapted from FixoLab are covered by
+FIXOLAB-LICENSE.

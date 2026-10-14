@@ -11,16 +11,20 @@ The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel,
 | Area | Changes in this image |
 | --- | --- |
 | 40CU dispatch | Enables `bc250-force-40cu.service` to request all 40 CUs on every boot, after GPU initialization and saved CU settings, before the display manager. Adds enable, recovery, and log commands. |
+| 40CU governor cap | Applies the community 40CU sweet-spot (`1500 MHz / 900 mV`) as the default `cyan-skillfish-governor-smu` config at image build, because the stock governor curve is 24CU-oriented. `ujust bc250-cu-governor-restore` returns to the package default. |
 | Vulkan async compute | Builds Mesa 26.2.4 RADV with three pinned BC-250 patches into `/usr/lib/bc250-radv`. Selects this patched driver globally for 64-bit Vulkan applications in new desktop and game sessions; retains stock 32-bit RADV and software rendering. |
 | Graphics session defaults | Sets `AMD_VULKAN_ICD=RADV`, `RADV_DEBUG=nohiz`, and `MESA_LOADER_DRIVER_OVERRIDE=zink` in `/etc/environment`, preserving unrelated base-image settings. |
 | Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
 | Game benchmarks | Adds `bc250-benchmark` for MangoHud frame captures, system context, and before/after comparisons. Driver and unified-heap overrides apply only to the launched game. |
 | Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
-| CPU ACPI fix | Includes the stock 6-core/12-thread CPU's C-state and P-state tables in the early initramfs by default; rebuilds and checks the initramfs with each image build. |
+| Deck UI stability | Disables and masks Bazzite's Handheld Daemon (`hhd`), which has no BC-250 support and fail-loops into micro-stutter. Run `ujust bc250-enable-hhd` only if you need it back. |
+| CPU ACPI fix | Includes e-tho `bc250-acpi-fix` v1.1.1 CPU idle/P-state/stub tables in the early initramfs by default; rebuilds and checks the initramfs with each image build. |
+| Memory policy | Disables ZRAM and enables **zswap with lz4** (`vm.swappiness=180`), matching community guidance for 16 GB BC-250 boards. Optional disk swapfile remains opt-in. |
 | Diagnostics | Adds `bc250-diag` and `ujust bc250-diagnostics` for governor state, clocks, temperatures, kernel arguments, and available driver CU topology. |
 | Optional disk swap | Adds `bc250-memory` and `ujust` helpers for an opt-in, persistent 8 GiB Btrfs swapfile at priority 10. No swapfile is allocated by the image build or automatically at boot. |
 | Storage maintenance | Explicitly enables `fstrim.timer`; limits persistent journal use to 512 MiB while reserving 1 GiB free through a journald drop-in. |
 | CPU mitigations | Adds `mitigations=off` to the deployment's kernel arguments, with the security tradeoff described below. |
+| Split-lock mitigation | Sets `kernel.split_lock_mitigate=0` (GDDR6 latency amplifies split-lock penalties on this board). |
 | Signed updates | Installs this repository's cosign public key and container policy. CI signs and verifies each digest before promoting it to both `:test` and `:latest`. |
 | Rebuilds and validation | Checks for base-image changes daily at 06:17 UTC and runs offline image checks for required tools, services, sensor support, recipes, Vulkan dependencies, and signing policy. |
 
@@ -30,7 +34,26 @@ To limit image size, Mesa compilers, development headers, downloaded sources, an
 
 Existing users of this custom image keep the same update tags when moving to the direct Bazzite base. The 40CU boot service remains enabled by default, with no manual unlock step required. If you previously masked it for recovery, that local mask persists; run `ujust bc250-enable-40cu-boot` when you want to enable it again.
 
-Governor clocks and voltages, Bazzite's ZRAM defaults, display resolution, refresh rate, game settings, and Steam launch options are not changed by this image. The optional signed-dot-product/FSR4 patch from the async project's documentation is not included. A base-image rebuild does not automatically advance the separately pinned Mesa source version.
+Governor clocks and voltages are **capped by default to the 40CU sweet spot** (1500 MHz / 900 mV, range 1000–1500), applied at image build via `bc250-governor-profile sweet-spot`. This is intentional: the package's stock curve is a **24CU** profile and can over-drive a board running the unlock. Re-apply with `ujust bc250-cu-sweet-spot`, restore the package default with `ujust bc250-cu-governor-restore`, or edit `/etc/cyan-skillfish-governor-smu/config.toml` for higher clocks (see the 40CU safety table below). Display resolution, refresh rate, game settings, and Steam launch options are not changed by this image. The optional signed-dot-product/FSR4 patch from the async project's documentation is not included. A base-image rebuild does not automatically advance the separately pinned Mesa source version.
+
+## Hardware and BIOS prerequisites
+
+The image cannot fix board-level configuration. Before rebasing, confirm the following against the [BC-250 community guide](https://elektricm.github.io/amd-bc250-docs/):
+
+| Requirement | Why |
+| --- | --- |
+| BIOS **P2.00–P3.00** or **P5.00** (avoid **P4.00**), **512 MB dynamic VRAM** | Community baseline for working GPU memory behaviour; P5.00 is experimental (EFI-script changes disabled; ReBAR only exists on P5) |
+| **IOMMU disabled** | IOMMU is broken on this board and causes display failures |
+| Clear CMOS after any BIOS flash, then reapply VRAM settings | Missing CMOS clear causes freezes while loading levels in newer games |
+| **Never run Smokeless_UMAF** | Can permanently damage the board |
+| Keep the **4 nylon washers** under the heatsink screws | Missing washers → 90–100 °C idle |
+| PSU with **300 W+ on the 12 V rail** (400 W+ if overclocking), 8-pin PCIe | Stock gaming draws 150–235 W; 40CU and overclocks go higher. Single 8-pin is only safe to ~260 W at the wall — 40CU/OC builds often need the board's Micro-Fit supplemental power. Never use SATA→8-pin or 6-pin→8-pin adapters; 8-pin connectors can melt past ~250 W. Use 16 AWG pure-copper wire |
+| High-static-pressure 120 mm fan and airflow over the backplate VRAM | Backplate GDDR6 has no temp sensor and overheats silently |
+| Expect a **30–60 s black screen early in boot** | Display output initializes late; the system is still booting |
+
+Kernel note: community guidance is to avoid known-bad kernel series for gfx1013 (6.15.0–6.15.6 and 6.17.8–6.17.10; see the guide's kernel support matrix). Prefer 6.19.x / 6.18 LTS / current Bazzite 44+ kernels. This image inherits whatever kernel `bazzite-deck:stable` ships — check `uname -r` after update. Historical community reports that "Bazzite stable is too old for 40CU" referred to older 6.17.7 builds; Bazzite 44-era kernels are in wide use, but if you see green screens or freezes with 40CU, consider rebasing to `bazzite-deck:testing` or disabling the unlock.
+
+If you later unlock CPU cores (8-core unlock is a separate, riskier mod), this image's ACPI tables and metrics still assume the stock 6-core/12-thread CPU — see the [unofficial community guide](https://github.com/katzzero/bc250-unofficial-community-guide) before mixing unlocks.
 
 ## Build
 
@@ -60,6 +83,18 @@ The image extends Bazzite's `ujust` commands with the vendored BC-250 helpers:
 | `ujust bc250-enable-40cu-boot` | Enable automatic full dispatch and apply it now |
 | `ujust bc250-recover-stock` | Disable both boot unlock paths and restore driver dispatch |
 | `ujust bc250-unlock-logs` | Show automatic unlock logs for this boot |
+| `ujust bc250-cu-status` | Privileged live SPI/WGP dispatch table (needs sudo) |
+| `ujust bc250-cu-menu` | Interactive CU manager menu |
+| `ujust bc250-cu-dry-run-40` | Preview a full 40CU enable without writing registers |
+| `ujust bc250-cu-enable-40` | Enable full 40CU dispatch for this boot only |
+| `ujust bc250-cu-save-boot` | Save the current table and install the upstream boot service (second unlock path) |
+| `ujust bc250-cu-disable-boot` | Remove the upstream saved-table boot service only |
+| `ujust bc250-cu-restore-24` | Restore the stock dispatch table (live) |
+| `ujust bc250-cu-sweet-spot` | Re-apply the 40CU governor profile (1500 MHz / 900 mV; image default) |
+| `ujust bc250-cu-governor-restore` | Restore the pre-sweet-spot governor config |
+| `ujust bc250-disable-suspend` | Mask system suspend/hibernate targets (opt-in) |
+| `ujust bc250-enable-suspend` | Unmask suspend/hibernate targets |
+| `ujust bc250-enable-hhd` | Re-enable Handheld Daemon (normally masked on this board) |
 | `ujust bc250-async-status` | Compare stock and patched Vulkan queue availability |
 | `ujust bc250-async-test` | Run async compute correctness tests |
 | `ujust bc250-async-disable` | Select stock Vulkan drivers for the next session |
@@ -67,15 +102,21 @@ The image extends Bazzite's `ujust` commands with the vendored BC-250 helpers:
 | `ujust bc250-benchmark-help` | Show game benchmark capture options |
 | `ujust bc250-benchmark-list` | List saved benchmark runs |
 
-`bc250-recover-stock` restores CU dispatch only; use `bc250-async-disable` separately to restore stock Vulkan selection.
+`bc250-recover-stock` restores CU dispatch only; use `bc250-async-disable` separately to restore stock Vulkan selection. `bc250-cu-disable-boot` removes only the upstream saved-table service; the image's `bc250-force-40cu.service` is a separate path and stays enabled unless masked.
 
 ### Optional disk swap
 
-The image preserves Bazzite's ZRAM and memory-management defaults. The optional helper creates `/var/lib/bc250swap/swapfile` in its own Btrfs subvolume, with an 8 GiB default size and swap priority 10 (below this host's ZRAM priority 100). It requires enough space to leave at least 10 GiB free. No swapfile is created automatically at boot.
+The image preserves Bazzite's memory-management stack except for the zswap policy above. The optional helper creates `/var/lib/bc250swap/swapfile` in its own Btrfs subvolume, with an 8 GiB default size and swap priority 10 (below zswap's preferred paging). It requires enough space to leave at least 10 GiB free. No swapfile is created automatically at boot.
 
 Run `ujust bc250-setup-swap` to activate it persistently. For a different size on first setup, use `sudo bc250-memory setup 16` (1–32 GiB supported). Repeating setup with the same size reuses the file; existing files are not resized or overwritten. `ujust bc250-disable-swap` disables it immediately and for future boots, keeping the file for reuse. This is additional swap capacity, not hibernation configuration.
 
 Use `ujust bc250-memory-status` during a demanding game to assess memory pressure before changing memory settings.
+
+### Memory policy notes (ZRAM vs swapfile)
+
+This image **disables ZRAM and enables zswap** (`zswap.enabled=1 zswap.max_pool_percent=25 zswap.compressor=lz4`, `vm.swappiness=180`), matching community guidance for 16 GB boards (for example [NexGen3D's SteamMachine scripts](https://github.com/NexGen-3D-Printing/SteamMachine)): ZRAM plus 512 MB dynamic VRAM has been linked to crashes in memory-heavy games, and zswap+lz4 is generally faster here. A disk swapfile is still optional (`ujust bc250-setup-swap`) for extra capacity.
+
+To return to stock Bazzite ZRAM behavior, replace `/etc/systemd/zram-generator.conf` and remove `vm.swappiness` from `/etc/sysctl.d/90-bc250-zswap.conf`, then drop the `zswap.*` kernel arguments with `rpm-ostree kargs`.
 
 ## Image signing
 
@@ -142,10 +183,36 @@ If the system does not boot, select a working previous deployment from the bootl
 - Stay on the **Deck (KDE)** variant when following these instructions.
 - Both `:latest` and `:test` are mutable tags pointing to the same verified build; consider pinning a tested image digest for reproducibility.
 - This project is independent of Bazzite.
+- Further reading: [elektricM BC-250 docs](https://elektricm.github.io/amd-bc250-docs/), [katzzero unofficial community guide](https://github.com/katzzero/bc250-unofficial-community-guide), [NexGen3D SteamMachine](https://github.com/NexGen-3D-Printing/SteamMachine), [62fixolab patched images](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images).
+- Not carried in this image (community projects, evaluate separately): DirectMesh, HelixSR/OptiScaler upscaler, Vulkan_NullVRS, `bc250-metrics-fix-bazzite` (8-core only), 8-core unlocks, BIOS mods.
 
 ## BC-250 40CU base and CPU mitigations
 
-This custom image uses `ghcr.io/ublue-os/bazzite-deck:stable` and includes the runtime CU manager directly. It **enables full 40CU dispatch by default at every boot** through `bc250-force-40cu.service`. No manual enable command or saved CU profile is required on a fresh installation. An existing local service mask remains respected across upgrades. It runs `bc250-cu-live-manager --yes enable all` after GPU initialization and any saved upstream CU profile, before the display manager. It does not change governor clocks or voltage. Consult the [pinned upstream manager guide](https://github.com/WinnieLV/bc250-cu-live-manager/blob/abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9/README.md) for status interpretation and recovery.
+This custom image uses `ghcr.io/ublue-os/bazzite-deck:stable` and includes the runtime CU manager directly. It **enables full 40CU dispatch by default at every boot** through `bc250-force-40cu.service`. No manual enable command or saved CU profile is required on a fresh installation. An existing local service mask remains respected across upgrades. It runs `bc250-cu-live-manager --yes enable all` after GPU initialization and any saved upstream CU profile, before the display manager. Sustained 40CU at high clocks will throttle on stock cooling. This image therefore **caps the governor at the community thermal guidance by default** — a **1500 MHz / 900 mV** operating point (`[frequency-range] min = 1000`, `max = 1500`). That config is applied at image build; the package default is backed up under `/etc/cyan-skillfish-governor-smu/backups/`.
+
+To re-apply or tune:
+
+```bash
+ujust bc250-cu-sweet-spot        # re-apply 1500 MHz / 900 mV
+ujust bc250-cu-governor-restore  # return to the backed-up package default
+```
+
+Editing `/etc/cyan-skillfish-governor-smu/config.toml` is supported; restart with `sudo systemctl restart cyan-skillfish-governor-smu`. Voltage curves are board-specific; see the [governor guide](https://elektricm.github.io/amd-bc250-docs/system/governor/) before raising clocks past 2000 MHz. Consult the [pinned upstream manager guide](https://github.com/WinnieLV/bc250-cu-live-manager/blob/abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9/README.md) for status interpretation and recovery.
+
+**40CU safety envelope (community field data):**
+
+| Clock | Voltage | Notes |
+| --- | --- | --- |
+| 1500 MHz | 900 mV | Image default sustained 40CU point (`bc250-cu-sweet-spot`) |
+| 2000 MHz | ~980–1000 mV | Safe daily ceiling for most boards on good air |
+| 2200 MHz | ~1030–1050 mV | Practical 40CU wall before secondary power limits |
+| 2400 MHz | any | **OCP hard lock** — board powers off rails, needs cable pull |
+
+Never set governor voltage below **700 mV** (locks the GPU at 1500 MHz or crashes at start). A **500 MHz floor can black-screen at idle** on some boards — this image's sweet-spot profile keeps `[frequency-range] min = 1000` for that reason. The stock governor curve is a **24CU** profile: do not run 40CU at the package defaults under sustained load. Games often need +10–15 mV more than synthetic tests. CPU overclocking lowers the GPU power trip point — undervolt the CPU if you push GPU clocks.
+
+**CU count caveats:** the two shader engines run symmetrically, so only 24/28/32/36/40 CU counts are meaningful (an "38 CU" config is really 36). `amdgpu.disable_cu=` indexes **WGP pairs** (`SE.SH.WGP`), not individual CUs. After a live unlock, `amdgpu_gca_config` can still show 24 — verify with `ujust bc250-cu-status` or `RADV_DEBUG=info vulkaninfo --summary | grep num_cu`. On Bazzite the DRM node is often `card1`/`dri` index 1. Bad CUs may only fail under RT or long sessions (Doom: The Dark Ages / CS2 are sensitive); use the live manager's per-WGP disable to bisect, and restore stock dispatch (`ujust bc250-recover-stock`) if games crash while compute tests pass.
+
+The board can **never** run FSR4 (no working INT8/DP4a on gfx1013).
 
 The unlock revision is pinned in `files/system/usr/share/bc250-40cu/vendor/bc250-cu-live-manager.UPSTREAM_REF`, with file hashes in `files/system/usr/share/bc250-40cu/SHA256SUMS`. Update both when intentionally upgrading the manager. Downloads happen only during image builds; boot-time unlocking works offline. The separate `duggasco/bc250-40cu-unlock` kernel-patch/research bundle is not required by this runtime service.
 
@@ -166,7 +233,7 @@ ujust bc250-cu-disable-boot
 ujust bc250-cu-restore-24
 ```
 
-The mask persists across image updates. To enable it again, run `sudo systemctl unmask bc250-force-40cu.service` and reboot. If the image fails to boot, select the previous deployment from the bootloader.
+The mask persists across image updates. To enable it again, run `ujust bc250-enable-40cu-boot` (unmasks, enables, and applies now) or `sudo systemctl unmask bc250-force-40cu.service` and reboot. If the image fails to boot, select the previous deployment from the bootloader.
 
 ### CPU vulnerability mitigations
 
@@ -188,7 +255,17 @@ Keep a known-good deployment available for rollback. This image's automatic 40CU
 
 The image includes the [BC-250 guide's system-wide graphics settings](https://elektricm.github.io/amd-bc250-docs/drivers/radv/#system-wide-configuration) in `/etc/environment`: `AMD_VULKAN_ICD=RADV`, `RADV_DEBUG=nohiz`, and `MESA_LOADER_DRIVER_OVERRIDE=zink`. These request RADV, disable hierarchical Z, and select Zink for OpenGL. They leave the private Vulkan ICD selection intact and do not add `nocompute`, which would disable the patched compute queue.
 
-These defaults take effect after deploying the rebuilt image and starting a new session (or rebooting). Existing local edits to `/etc/environment` can persist across image updates; check the active values with `printenv AMD_VULKAN_ICD RADV_DEBUG MESA_LOADER_DRIVER_OVERRIDE`. Applications can override them individually, and Flatpak graphics behavior still needs separate validation.
+These defaults take effect after deploying the rebuilt image and starting a new session (or rebooting). Existing local edits to `/etc/environment` can persist across image updates; check the active values with `printenv AMD_VULKAN_ICD RADV_DEBUG MESA_LOADER_DRIVER_OVERRIDE VK_DRIVER_FILES`. Applications can override them individually, and Flatpak graphics behavior still needs separate validation.
+
+Driver selection is split across three places:
+
+| File | Role |
+| --- | --- |
+| `/etc/environment` | `AMD_VULKAN_ICD`, `RADV_DEBUG=nohiz`, `MESA_LOADER_DRIVER_OVERRIDE=zink` |
+| `/etc/environment.d/95-bc250-async-compute.conf` | `VK_DRIVER_FILES` / `VK_ICD_FILENAMES` → patched 64-bit RADV, stock 32-bit RADV, software `lvp` |
+| `/etc/profile.d/95-bc250-async-compute.sh` | Same ICD chain for login shells |
+
+`ujust bc250-async-disable` / `ujust bc250-async-enable` rewrite the environment.d/profile.d files; the three `/etc/environment` graphics defaults are left alone. `bc250-async-compute steam` prints the recommended per-game Steam launch options; `bc250-async-compute env` shows the session selection; `bc250-async-compute always status` reports whether the patched driver is the system default.
 
 The image builds a private Mesa 26.2.4 RADV with the three patches from [bc250-async-compute-bazzite](https://github.com/tri3gubki-ops/bc250-async-compute-bazzite), pinned to commit `56bf06b986f4639c32a669e9cdd31cdf7fba44b6`. Mesa's source archive is SHA-256 checked. The build stage's compilers and headers are not copied into the final image.
 
@@ -196,7 +273,7 @@ The patched 64-bit driver lives at `/usr/lib/bc250-radv` and is selected globall
 
 This exposes the BC-250's dedicated compute queue. Performance gains depend on the game actually using that queue; queue availability and passing correctness tests do not establish higher FPS. Flatpak applications have separate graphics runtimes and are not validated by this integration.
 
-Historical validation of an earlier image build on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. After deployment and reboot, the installed driver also passed all five correctness tests, and the owner confirmed that games work with the updated image. These checks establish functionality; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2.
+Historical validation of an earlier image build on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. After deployment and reboot, the installed driver also passed all five correctness tests, and the owner confirmed that games work with the updated image. These checks establish functionality; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2. Other community builds of the gfx1013 compute-queue patch report larger gains in some titles (for example ~+20–25% in Cyberpunk at 1440p on 40CU) — measure on your board with `bc250-benchmark`.
 
 After updating and rebooting:
 
@@ -222,6 +299,8 @@ To record whether a game uses compute queues, use `bc250-game-trace %command%`, 
 `bc250-benchmark` wraps a game with MangoHud and saves per-frame CSV data plus
 the kernel, image deployment, driver settings, governor configuration and memory
 settings. It requires no sudo and changes no persistent performance settings.
+
+This image does **not** enable the unified RADV memory heap globally: community reports say `radv_enable_unified_heap_on_apu` can break VRAM reporting in some games. Measure per title instead:
 
 For a unified-heap comparison, use this Steam launch option for the first run:
 
@@ -279,9 +358,11 @@ Gamescope limits still apply. Use the helper for both sides of a comparison.
 It cannot reconstruct measurements from before installation; heap and driver
 overrides let you record fresh comparisons without changing system defaults.
 
-## CPU ACPI fix (6 cores / 12 threads)
+## CPU ACPI fix (e-tho v1.1.1)
 
-The image includes the unmodified `SSDT-CST.aml` and `SSDT-PST.aml` tables from [bc250-collective/bc250-acpi-fix](https://github.com/bc250-collective/bc250-acpi-fix/tree/1594d72f11d674bd7e46f4e51eee4216155e52fb), pinned to revision `1594d72f11d674bd7e46f4e51eee4216155e52fb`. They target the stock CPU's 12 logical processors (`P000`–`P00B`) and provide ACPI definitions for CPU idle states and frequency scaling. These are **not the tables for an unlocked 8-core/16-thread CPU**. The separate 40CU GPU unlock remains enabled.
+The image includes `SSDT-CPU.aml`, `SSDT-PST.aml`, and `SSDT-STUBS.aml` from [e-tho/bc250-acpi-fix](https://github.com/e-tho/bc250-acpi-fix) tag `v1.1.1` (MIT). That release replaces the earlier bc250-collective tables, adds a **C3 idle-state freeze fix**, and stubs undefined firmware methods. The tables cover all 16 firmware CPU definitions; stock boards use the first 12 logical processors (`P000`–`P00B`). They provide ACPI definitions for CPU idle states (POLL/C1/C2) and frequency scaling (800 MHz–3.2 GHz). They are usable on an 8-core unlock as well, but this image does not ship 8-core tooling. The separate 40CU GPU unlock remains enabled.
+
+Tables, source files, checksums, and provenance live in `/usr/share/bc250-acpi`. The dracut configuration at `/usr/lib/dracut/dracut.conf.d/95-bc250-acpi.conf` enables early ACPI table loading. BlueBuild regenerates the image's initramfs, and build checks verify the exact tables are present in its uncompressed early archive for every installed kernel. No manual bootloader edits or host-side `rpm-ostree initramfs --enable` step are required for a normal deployment of the image. If a modded BIOS already injects ACPI fixes, disable one side to avoid duplicate tables.
 
 Tables, source files, checksums, and provenance live in `/usr/share/bc250-acpi`. The dracut configuration at `/usr/lib/dracut/dracut.conf.d/95-bc250-acpi.conf` enables early ACPI table loading. BlueBuild regenerates the image's initramfs, and build checks verify the exact tables are present in its uncompressed early archive for every installed kernel. No manual bootloader edits or host-side `rpm-ostree initramfs --enable` step are required for a normal deployment of the image.
 
@@ -310,8 +391,40 @@ sudo journalctl -k -b | grep -i nct6683
 
 The defaults are in `/usr/lib/modules-load.d/bc250-sensors.conf` and `/usr/lib/modprobe.d/bc250-sensors.conf`. To disable them locally, mask both files with same-named symlinks to `/dev/null` in `/etc/modules-load.d/` and `/etc/modprobe.d/`, then reboot.
 
+For **PWM fan control** (not included), the community uses the out-of-tree `nct6687` driver instead of `nct6683`, often with `ujust install-coolercontrol` for fan curves. Do not load both modules at once. See the [sensors guide](https://elektricm.github.io/amd-bc250-docs/system/sensors/).
+
 ## Read-only BC-250 diagnostics
 
 On this image, run `bc250-diag` as a regular user. It prints the governor service state, BC-250 GPU clock levels (or readable hwmon frequency values), thermal sensor readings, the running kernel command line, and KFD driver-reported CU topology when available. A `*` in the GPU SCLK table marks the current level. You can save the report with `bc250-diag > bc250-report.txt`.
 
 The helper tolerates missing devices and sensors and never changes clocks, CU settings, or services. KFD topology describes what the driver initialized; it does **not** confirm the live 40CU SPI/WGP dispatch table. The upstream `bc250-cu-live-manager status` uses privileged register access, so this helper does not invoke it or prompt for `sudo`. This image requests full 40CU dispatch at boot; use `ujust bc250-cu-status` to verify the live result.
+
+## Known issues and community fixes
+
+Board quirks the image cannot fix, plus host-side workarounds from the BC-250 community ([elektricM guide](https://elektricm.github.io/amd-bc250-docs/), [unofficial community guide](https://github.com/katzzero/bc250-unofficial-community-guide), [62fixolab](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images)):
+
+| Symptom | What to do |
+| --- | --- |
+| Deck UI micro-stutter every few seconds | HHD fail-loops on BC-250. This image masks it; if you re-enabled it, `sudo systemctl disable --now hhd && sudo systemctl mask hhd` |
+| Box dead after sitting idle (no wake, only power cycle) | S3/S4 sleep does not work on this SMU. Run `ujust bc250-disable-suspend`, and disable Gamescope/Game Mode idle suspend separately |
+| GPU stuck at 1500 MHz | Governor not running, or voltage below 700 mV locks the clock. `systemctl status cyan-skillfish-governor-smu`; check `pp_dpm_sclk` on **both** `card0` and `card1` |
+| Graphics artifacts / black squares | `RADV_DEBUG=nohiz` is already global; for stubborn cases try `RADV_DEBUG=aco AMD_DEBUG=aco %command%` per game |
+| Flatpak games use software rendering | Flatpak ships its own Mesa runtime — the private patched RADV is not used there |
+| Game Mode / D3D12 crashes (Steam restart loop) | Launch with `-dx11` (confirmed on several titles); same games often fine from desktop |
+| Sunshine crashes (`status=139`) or black screen after Bazzite 44 | `ujust setup-sunshine`, then set `encoder = software` and `capture = kms` in `~/.config/sunshine/sunshine.conf` |
+| MangoHud frame-time sawtooth / 655% usage | Disable MangoHud for pacing issues; 655% is a BC-250 metrics bug (governor `fix-metrics = true` helps) |
+| VRAM reported lower than expected | Known RADV visibility limit. Do **not** enable `radv_enable_unified_heap_on_apu` globally — it breaks VRAM reporting in some games (e.g. TLOU) and can stop others launching. Use `bc250-benchmark --heap on/off` per game. `Failed to pin framebuffer … -12` = under-allocated VRAM |
+| Games crash mid-scene at 512 MB dynamic VRAM | Try a 6 GB fixed BIOS split for AAA titles that need a large VRAM window (some titles are the reverse — measure) |
+| Memory-heavy games crash | See [Memory policy notes](#memory-policy-notes-zram-vs-swapfile) |
+| No hardware video encode/decode | VCN is power-gated / unusable publicly; use software encode (x264) in OBS etc. |
+| Pitch-shifted or missing DP→HDMI audio | Known Bazzite quirk even on recent kernels. Prefer native DisplayPort; passive adapters only; USB DAC as fallback. DP audio fix needs kernel 6.19.10+ |
+| TV flicker / handshake via adapter dongles | Use a plain DP→HDMI **cable** (no dongle). BIOS needs native DP |
+| Unstable CPU overclock / random reboots | Never exceed **1.325 V CPU core (Vid)** — bricking risk. GPU governor min voltage must stay ≥ 700 mV |
+| Hard power-off under load (rails dead, wall <30 W) | OCP trip — lower GPU clocks (≤2200 MHz), stay within the 40CU voltage table, reduce CPU OC. Single 8-pin is only safe to ~260 W wall |
+| Intermittent no-POST / aging VRAM | Community workaround: cap GPU memory clock 1750 → 1650 MHz (~5% bandwidth cost) |
+| 40CU crashes in games but compute is fine | Silicon lottery. Mask suspect WGPs or restore stock dispatch (`ujust bc250-recover-stock`); see duggasco's per-WGP health test |
+| `ujust update` re-downloads / fails on Bazzite 44 | Known loop report involving the skillfish governor layer. Update from Desktop Mode (not Game Mode), then reinstall/restart the governor if needed |
+| WiFi dongle stops working after rebase | Custom images can drop out-of-tree drivers. Prefer in-kernel chipsets (MT7921AU etc.); `rpm-ostree rollback` if needed |
+| Green screens / crashes at idle after a governor tune | Raise the lowest safe-point voltage (board-dependent; some need ≥760 mV at 350–500 MHz). Never leave min voltage <700 mV |
+
+Related reading: [Bazzite setup](https://elektricm.github.io/amd-bc250-docs/linux/bazzite/), [governor tuning](https://elektricm.github.io/amd-bc250-docs/system/governor/), [40CU unlock](https://elektricm.github.io/amd-bc250-docs/system/40cu-unlock/), [troubleshooting](https://elektricm.github.io/amd-bc250-docs/troubleshooting/display/).

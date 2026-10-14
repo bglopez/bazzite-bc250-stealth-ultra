@@ -1,5 +1,8 @@
-Source: https://github.com/bc250-collective/bc250-acpi-fix
-Revision: 1594d72f11d674bd7e46f4e51eee4216155e52fb
-Unmodified AML tables and DSL sources for BC-250 6-core/12-thread CPUs (P000-P00B).
-The 8-core/16-thread unlock requires different tables.
-Upstream declares no license in this revision.
+Source: https://github.com/e-tho/bc250-acpi-fix
+Tag: v1.1.1
+Fetched: release assets SSDT-CPU.aml / SSDT-PST.aml / SSDT-STUBS.aml plus matching .dsl sources.
+License: MIT (see LICENSE-e-tho).
+Supersedes: bc250-collective/bc250-acpi-fix revision 1594d72f11d674bd7e46f4e51eee4216155e52fb
+  (e-tho v1.1.1 includes the C3 idle-state freeze fix and SSDT-STUBS for undefined methods).
+Coverage: all 16 firmware CPU definitions (P000-P00F). Stock boards use 12 threads (P000-P00B);
+  unlocked 8-core boards can use all 16. Do not stack with modded-BIOS ACPI injection.

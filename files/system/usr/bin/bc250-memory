@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Optional disk swap; never alter Bazzite's ZRAM or sysctl defaults.
+# Optional disk swapfile. Image defaults: ZRAM disabled, zswap+lz4 enabled (kargs).
+# This helper never changes those policy defaults.
 set -euo pipefail
 
 swap_dir=/var/lib/bc250swap
