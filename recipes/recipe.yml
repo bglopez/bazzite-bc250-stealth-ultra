@@ -48,10 +48,11 @@ modules:
         - cyan-skillfish-governor-smu.service
         - fstrim.timer
         - bc250-force-40cu.service
-      disabled:
-        - hhd.service
-      masked:
-        - hhd.service
+  # HHD is not always shipped as a unit file on this base. Mask via /dev/null
+  # symlink so a missing unit cannot fail the build (Deck UI micro-stutter fix).
+  - type: script
+    snippets:
+      - 'mkdir -p /etc/systemd/system && ln -sfn /dev/null /etc/systemd/system/hhd.service'
   - type: script
     snippets:
       - 'mkdir -p /usr/lib/systemd/journald.conf.d'

@@ -20,7 +20,9 @@ for service in cyan-skillfish-governor-smu.service bc250-force-40cu.service; do
   systemctl --root=/ is-enabled "$service"
 done
 # Handheld Daemon fail-loops on BC-250 and causes Deck UI micro-stutter.
-test "$(systemctl --root=/ is-enabled hhd.service)" = masked
+# Mask is a /dev/null symlink so it works even when the unit file is absent.
+test -L /etc/systemd/system/hhd.service
+test "$(readlink /etc/systemd/system/hhd.service)" = /dev/null
 test -s /usr/lib/modules-load.d/bc250-sensors.conf
 test -s /usr/lib/modprobe.d/bc250-sensors.conf
 # 40CU sweet spot is the image default (stock governor curve is 24CU-oriented).
