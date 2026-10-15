@@ -2,11 +2,11 @@
 
 Custom image based directly on [upstream Bazzite Deck](https://github.com/ublue-os/bazzite), with the BC-250 GPU governor, automatic 40CU unlock, diagnostics, and custom system configuration.
 
-**Status: an earlier build was tested on the owner's BC-250. The direct upstream Bazzite rebase still requires an image build and hardware boot/gameplay validation.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:test` and `:latest`.
+**Status: an earlier build was tested on the owner's BC-250. The direct upstream Bazzite rebase still requires an image build and hardware boot/gameplay validation.** The workflow signs each image digest with this repository's cosign key and verifies it before advancing `:latest` (upstream stable) or `:testing` (upstream testing).
 
 ## Changes compared with upstream
 
-The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel, Deck environment, and stock Mesa packages. This repository explicitly installs `cyan-skillfish-governor-smu` from the `filippor/bazzite` COPR, plus `pciutils` and `umr`, and enables the governor service. The runtime 40CU unlock is downloaded directly from [WinnieLV/bc250-cu-live-manager](https://github.com/WinnieLV/bc250-cu-live-manager) at revision `abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9` during the image build and SHA-256 verified before installation. Provenance, checksums, and notices ship in `/usr/share/bc250-40cu`. This repository adds the following configuration and tools:
+The direct base is `ghcr.io/ublue-os/bazzite-deck:stable` for `:latest` and `ghcr.io/ublue-os/bazzite-deck:testing` for `:testing`, retaining its kernel, Deck environment, and stock Mesa packages. This repository explicitly installs `cyan-skillfish-governor-smu` from the `filippor/bazzite` COPR, plus `pciutils` and `umr`, and enables the governor service. The runtime 40CU unlock is downloaded directly from [WinnieLV/bc250-cu-live-manager](https://github.com/WinnieLV/bc250-cu-live-manager) at revision `abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9` during the image build and SHA-256 verified before installation. Provenance, checksums, and notices ship in `/usr/share/bc250-40cu`. This repository adds the following configuration and tools:
 
 | Area | Changes in this image |
 | --- | --- |
@@ -24,14 +24,14 @@ The direct base is `ghcr.io/ublue-os/bazzite-deck:stable`, retaining its kernel,
 | Storage maintenance | Explicitly enables `fstrim.timer`; limits persistent journal use to 512 MiB while reserving 1 GiB free through a journald drop-in. |
 | CPU mitigations | Adds `mitigations=off` to the deployment's kernel arguments, with the security tradeoff described below. |
 | Split-lock mitigation | Sets `kernel.split_lock_mitigate=0` (GDDR6 latency amplifies split-lock penalties on this board). |
-| Signed updates | Installs this repository's cosign public key and container policy. CI signs and verifies each digest before promoting it to both `:test` and `:latest`. |
+| Signed updates | Installs this repository's cosign public key and container policy. CI signs and verifies each digest before promoting it to `:latest` (upstream stable) or `:testing` (upstream testing). |
 | Rebuilds and validation | Checks for base-image changes daily at 06:17 UTC and runs offline image checks for required tools, services, sensor support, recipes, Vulkan dependencies, and signing policy. |
 
 The driver and helpers are baked into the image's OSTree-managed `/usr`; they do not require compiling or installing software on the host. Driver-selection defaults ship in `/etc`, where local changes can persist across updates. Optional disk swap is host state in `/var`, created only when requested.
 
 To limit image size, Mesa compilers, development headers, downloaded sources, and build caches stay in the disposable `async-radv` stage; only `/out/usr` is copied into the final image. The private RADV driver is stripped during installation, and the BC-250 package installation skips optional RPM dependencies while retaining required dependencies. Image checks still verify the driver's shared-library dependencies. Actual size savings require a rebuilt-image comparison. Removing files inherited from Bazzite in a later layer alone does not shrink the underlying base layers.
 
-Existing users of this custom image keep the same update tags when moving to the direct Bazzite base. The 40CU boot service remains enabled by default, with no manual unlock step required. If you previously masked it for recovery, that local mask persists; run `ujust bc250-enable-40cu-boot` when you want to enable it again.
+The maintained update tags are `:latest` and `:testing`. The legacy `:test` tag is no longer updated; users following it should switch to `:latest` for upstream stable or `:testing` for upstream testing. The 40CU boot service remains enabled by default, with no manual unlock step required. If you previously masked it for recovery, that local mask persists; run `ujust bc250-enable-40cu-boot` when you want to enable it again.
 
 Governor clocks and voltages are **capped by default to the 40CU sweet spot** (1500 MHz / 900 mV, range 1000–1500), applied at image build via `bc250-governor-profile sweet-spot`. This is intentional: the package's stock curve is a **24CU** profile and can over-drive a board running the unlock. Re-apply with `ujust bc250-cu-sweet-spot`, restore the package default with `ujust bc250-cu-governor-restore`, or edit `/etc/cyan-skillfish-governor-smu/config.toml` for higher clocks (see the 40CU safety table below). Display resolution, refresh rate, game settings, and Steam launch options are not changed by this image. The optional signed-dot-product/FSR4 patch from the async project's documentation is not included. A base-image rebuild does not automatically advance the separately pinned Mesa source version.
 
@@ -50,22 +50,24 @@ The image cannot fix board-level configuration. Before rebasing, confirm the fol
 | High-static-pressure 120 mm fan and airflow over the backplate VRAM | Backplate GDDR6 has no temp sensor and overheats silently |
 | Expect a **30–60 s black screen early in boot** | Display output initializes late; the system is still booting |
 
-Kernel note: community guidance is to avoid known-bad kernel series for gfx1013 (6.15.0–6.15.6 and 6.17.8–6.17.10; see the guide's kernel support matrix). Prefer 6.19.x / 6.18 LTS / current Bazzite 44+ kernels. This image inherits whatever kernel `bazzite-deck:stable` ships — check `uname -r` after update. Historical community reports that "Bazzite stable is too old for 40CU" referred to older 6.17.7 builds; Bazzite 44-era kernels are in wide use, but if you see green screens or freezes with 40CU, consider rebasing to `bazzite-deck:testing` or disabling the unlock.
+Kernel note: community guidance is to avoid known-bad kernel series for gfx1013 (6.15.0–6.15.6 and 6.17.8–6.17.10; see the guide's kernel support matrix). Prefer 6.19.x / 6.18 LTS / current Bazzite 44+ kernels. This image inherits whatever kernel the selected upstream Bazzite channel ships — check `uname -r` after update. Historical community reports that "Bazzite stable is too old for 40CU" referred to older 6.17.7 builds; Bazzite 44-era kernels are in wide use, but if you see green screens or freezes with 40CU, consider rebasing to `bazzite-deck:testing` or disabling the unlock.
 
 If you later unlock CPU cores (8-core unlock is a separate, riskier mod), this image's ACPI tables and metrics still assume the stock 6-core/12-thread CPU — see the [unofficial community guide](https://github.com/katzzero/bc250-unofficial-community-guide) before mixing unlocks.
 
 ## Build
 
-The [GitHub Actions workflow](.github/workflows/build.yml) builds the BlueBuild recipe on pushes to `master` that change non-Markdown files, or when manually dispatched. Successful builds publish the same verified digest to both tags:
+The [GitHub Actions workflow](.github/workflows/build.yml) builds the BlueBuild recipe on pushes to `master` that change non-Markdown files, or when manually dispatched. Both channels use the same recipe and customizations, with independently signed and verified images:
 
-```text
-ghcr.io/bglopez/bazzite-bc250-stealth-ultra:test
-ghcr.io/bglopez/bazzite-bc250-stealth-ultra:latest
-```
+| Upstream base | Published image |
+| --- | --- |
+| `ghcr.io/ublue-os/bazzite-deck:stable` | `ghcr.io/bglopez/bazzite-bc250-stealth-ultra:latest` |
+| `ghcr.io/ublue-os/bazzite-deck:testing` | `ghcr.io/bglopez/bazzite-bc250-stealth-ultra:testing` |
+
+The legacy `:test` tag is no longer published. A failure in one channel does not cancel the other channel's build.
 
 Check [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions) for a successful run and [Packages](https://github.com/bglopez?tab=packages) for the published image before continuing. A green workflow does not guarantee the image boots or works correctly on your hardware.
 
-The workflow also checks the upstream Bazzite Deck stable base daily at 06:17 UTC. Scheduled runs rebuild only when its digest differs from the last successful publication, or when that cached record is unavailable. Pushes and manual runs always build. The record is updated only after signing, verification, and tag promotion succeed. This publishes an available update; it does not reboot or update your host automatically.
+The workflow also checks both upstream Bazzite Deck channels daily at 06:17 UTC. Scheduled runs rebuild each channel only when its upstream digest differs from that channel's last successful publication, or when its cached record is unavailable. Pushes and manual runs always build both channels. The record is updated only after signing, verification, and tag promotion succeed. This publishes an available update; it does not reboot or update your host automatically.
 
 Build-time health checks require the CU manager, governor, sensor kernel module, enabled boot services, custom helpers, and image signing policy. These checks run offline without starting services or writing GPU registers.
 
@@ -120,7 +122,7 @@ To return to stock Bazzite ZRAM behavior, replace `/etc/systemd/zram-generator.c
 
 GitHub Actions requires two repository secrets: `SIGNING_SECRET` (the encrypted private key) and `COSIGN_PASSWORD` (its password). Only `cosign.pub` belongs in Git.
 
-Builds upload a unique staging tag first, sign and verify its immutable digest, then promote that same digest to `:test` and `:latest`. A signing or verification failure prevents promotion. Staging images can exist unsigned and should not be used for deployment. Signatures use the legacy attachment format for OSTree/container-policy compatibility.
+Builds upload a unique staging tag first, sign and verify its immutable digest, then promote that same digest to `:latest` for upstream stable or `:testing` for upstream testing. A signing or verification failure prevents promotion. Staging images can exist unsigned and should not be used for deployment. Signatures use the legacy attachment format for OSTree/container-policy compatibility.
 
 ## Switching from stock Bazzite Deck
 
@@ -179,7 +181,7 @@ If the system does not boot, select a working previous deployment from the bootl
 ## Notes
 
 - Stay on the **Deck (KDE)** variant when following these instructions.
-- Both `:latest` and `:test` are mutable tags pointing to the same verified build; consider pinning a tested image digest for reproducibility.
+- `:latest` and `:testing` are mutable tags tracking their respective upstream channels; consider pinning a tested image digest for reproducibility.
 - This project is independent of Bazzite.
 - Further reading: [elektricM BC-250 docs](https://elektricm.github.io/amd-bc250-docs/), [katzzero unofficial community guide](https://github.com/katzzero/bc250-unofficial-community-guide), [NexGen3D SteamMachine](https://github.com/NexGen-3D-Printing/SteamMachine), [62fixolab patched images](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images).
 - Not carried in this image (community projects, evaluate separately): DirectMesh, HelixSR/OptiScaler upscaler, Vulkan_NullVRS, `bc250-metrics-fix-bazzite` (8-core only), 8-core unlocks, BIOS mods.
