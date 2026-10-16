@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build a private RADV and its correctness tests in a disposable Fedora stage.
 set -euo pipefail
-mesa_version=26.2.4
-mesa_sha256=bce5f7fbebb934373b86c999a064d52fb5065878dc57f287f95346648ec832e9
+mesa_version=26.2.5
+mesa_sha256=794b3d1729075dae7ebd47c7283b7ca0cdb5dec668f7f11cc0a5d82f6138a0a5
 prefix=/usr/lib/bc250-radv
 sources=/tmp/bc250-async
 share=/out/usr/share/bc250-async-compute
