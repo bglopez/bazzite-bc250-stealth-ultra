@@ -160,6 +160,17 @@ ujust bc250-async-test
 
 Full 40CU dispatch is enabled by default; no manual unlock step is needed. Look for `CUs active & routed : 40/40` in the CU status output.
 
+#### Updating an existing installation
+
+Use **`rpm-ostree upgrade`**, not `rebase`, to pull a newer build of this image:
+
+```bash
+sudo rpm-ostree upgrade
+sudo systemctl reboot
+```
+
+`rpm-ostree rebase` is for *switching* to a different image reference. Once your deployment is already pinned to `ostree-image-signed:docker://ghcr.io/bglopez/bazzite-bc250-stealth-ultra`, re-rebasing to that same reference fails with `Old and new refs are equal`. The rebase commands elsewhere in this README apply to the one-time move onto this image and to returning to stock Bazzite.
+
 ## Rollback and return to stock Bazzite
 
 To return to the previous deployment:
@@ -181,6 +192,8 @@ If the system does not boot, select a working previous deployment from the bootl
 ## Notes
 
 - Stay on the **Deck (KDE)** variant when following these instructions.
+- `/usr/local` is **writable and sits outside the ostree deployment**, so anything written there survives every image update. An old `bc250-cu-live-manager` left in `/usr/local/bin` shadows the SHA-verified pinned copy in `/usr/bin`, because `/usr/local/bin` precedes `/usr/bin` in `PATH`. If `bc250-cu-live-manager status` prints the older `SPI total : …` layout, check `command -v bc250-cu-live-manager` and remove any stray copy from `/usr/local/bin`. The `ujust` recipes call `/usr/bin/bc250-cu-live-manager` explicitly to avoid this.
+- The 40CU boot service calls `/usr/bin/bc250-cu-live-manager` by absolute path, so it is unaffected by a stale `/usr/local/bin` copy even if one exists.
 - `:latest` and `:testing` are mutable tags tracking their respective upstream channels; consider pinning a tested image digest for reproducibility.
 - This project is independent of Bazzite.
 - Further reading: [elektricM BC-250 docs](https://elektricm.github.io/amd-bc250-docs/), [katzzero unofficial community guide](https://github.com/katzzero/bc250-unofficial-community-guide), [NexGen3D SteamMachine](https://github.com/NexGen-3D-Printing/SteamMachine), [62fixolab patched images](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images).
@@ -196,6 +209,9 @@ To re-apply or tune:
 ujust bc250-cu-sweet-spot        # re-apply 1500 MHz / 900 mV
 ujust bc250-cu-governor-restore  # return to the backed-up package default
 ```
+
+> [!IMPORTANT]
+> **Local `/etc` state shadows this image's baked governor config.** Once you run `bc250-cu-sweet-spot` (or edit `config.toml`) on a deployment, rpm-ostree's three-way `/etc` merge keeps *your* file across future image updates, so a config change shipped by a later image will **not** appear on your system. This is silent: the service starts normally and simply keeps the old values. After any image update, verify with `grep '^temp-read' /etc/cyan-skillfish-governor-smu/config.toml` and re-run `ujust bc250-cu-sweet-spot` if it does not match the current README.
 
 Editing `/etc/cyan-skillfish-governor-smu/config.toml` is supported; restart with `sudo systemctl restart cyan-skillfish-governor-smu`. Voltage curves are board-specific; see the [governor guide](https://elektricm.github.io/amd-bc250-docs/system/governor/) before raising clocks past 2000 MHz. Consult the [pinned upstream manager guide](https://github.com/WinnieLV/bc250-cu-live-manager/blob/a929085d791f126ce76a60eb609610820fb08066/README.md) for status interpretation and recovery.
 
