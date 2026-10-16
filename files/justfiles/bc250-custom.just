@@ -28,11 +28,13 @@ bc250-enable-40cu-boot:
     @sudo systemctl unmask bc250-force-40cu.service
     @sudo systemctl enable --now bc250-force-40cu.service
 
-# Disable both boot unlock paths and restore driver dispatch
+# Disable both boot unlock paths and restore driver dispatch.
+# Call /usr/bin explicitly; a bare name resolves through PATH and an older
+# copy in /usr/local/bin would shadow the pinned revision. See bc250-40cu.just.
 bc250-recover-stock:
     @sudo systemctl mask --now bc250-force-40cu.service
-    @sudo bc250-cu-live-manager uninstall-service
-    @sudo bc250-cu-live-manager --yes stock-dispatch
+    @sudo /usr/bin/bc250-cu-live-manager uninstall-service
+    @sudo /usr/bin/bc250-cu-live-manager --yes stock-dispatch
 
 # Show automatic unlock results from the current boot
 bc250-unlock-logs:
