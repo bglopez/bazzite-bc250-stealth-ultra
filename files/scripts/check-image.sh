@@ -25,6 +25,13 @@ test -s /usr/lib/modprobe.d/bc250-sensors.conf
 test -s /etc/cyan-skillfish-governor-smu/config.toml
 grep -q '^max = 1500$' /etc/cyan-skillfish-governor-smu/config.toml
 grep -q '^voltage = 900$' /etc/cyan-skillfish-governor-smu/config.toml
+# Temperature must come from sysfs, not a long-lived DRM handle: the drm default
+# stalls session handovers and drops the HDMI link on DP->HDMI adapters.
+grep -q '^temp-read = "sysfs"$' /etc/cyan-skillfish-governor-smu/config.toml
+# Safe-points must reach past the shipped cap, or raising [frequency-range].max
+# makes the governor error with "beyond max safe point" instead of interpolating.
+grep -q '^voltage = 960$' /etc/cyan-skillfish-governor-smu/config.toml
+grep -q '^frequency = 2000$' /etc/cyan-skillfish-governor-smu/config.toml
 # Split-lock mitigation ships in the image (GDDR6 latency amplifies the penalty).
 test -s /usr/lib/sysctl.d/90-bc250-split-lock.conf
 grep -q '^kernel.split_lock_mitigate=0$' /usr/lib/sysctl.d/90-bc250-split-lock.conf
