@@ -1,7 +1,10 @@
 Runtime unlock source: https://github.com/WinnieLV/bc250-cu-live-manager
-Revision: abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9
+Revision: a929085d791f126ce76a60eb609610820fb08066
 Fetched directly at image build time by install-40cu.sh; verified against SHA256SUMS.
 The revision is recorded in vendor/bc250-cu-live-manager.UPSTREAM_REF.
+Changed from abfeb1fed87c7b0f29370b6ec2911a8fae1f34e9: write-service-table no longer bakes
+a UMR_INSTANCE into the saved table, so apply-service re-detects the DRI instance each boot.
+The old revision could silently leave a board at 24 CU after a card0/card1 flip.
 Compatibility helpers: https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images
 Helper revision: 5a145f656aeb0c310aecb7657754f6085d2261cf
 Helpers retained: CU manager wrapper, governor profile helper, bc250-40cu.just.
