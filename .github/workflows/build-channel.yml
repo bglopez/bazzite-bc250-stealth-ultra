@@ -128,7 +128,25 @@ jobs:
             --output recipes/recipe-ci.yml
           bluebuild build --no-sign -v recipes/recipe-ci.yml
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/bazzite-bc250-stealth-ultra"
-          digest=$(docker buildx imagetools inspect "$image:$staging_tag" --format '{{.Manifest.Digest}}')
+          # Look the pushed tag up in the registry rather than assuming its
+          # name. BlueBuild prefixes the tag with the branch when the build
+          # is not from the default branch, and appends the Fedora version
+          # to the versioned tags.
+          tags=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            "https://ghcr.io/v2/${GITHUB_REPOSITORY_OWNER,,}/bazzite-bc250-stealth-ultra/tags/list?n=1000" \
+            | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin).get("tags") or []))')
+          pushed_tag=$(grep -xF "$staging_tag" <<<"$tags" | head -1)
+          if [[ -z $pushed_tag ]]; then
+            pushed_tag=$(grep -F "$staging_tag" <<<"$tags" | head -1)
+          fi
+          test -n "$pushed_tag" || {
+            echo "no tag matching $staging_tag was pushed; registry has:" >&2
+            echo "$tags" >&2
+            exit 1
+          }
+          echo "pushed tag: $pushed_tag"
+          digest=$(docker buildx imagetools inspect "$image:$pushed_tag" --format '{{.Manifest.Digest}}')
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
