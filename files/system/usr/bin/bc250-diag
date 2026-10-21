@@ -102,6 +102,29 @@ else
   printf 'unavailable\n'
 fi
 
+section 'Graphics driver stack'
+if [[ -r /sys/module/amdgpu/parameters/bc250_gfx1013_v33 ]]; then
+  printf 'amdgpu: patched BC-250 module (bc250_gfx1013_v33=%s)\n' \
+    "$(value /sys/module/amdgpu/parameters/bc250_gfx1013_v33)"
+elif [[ -d /sys/module/amdgpu ]]; then
+  printf 'amdgpu: stock module (no BC-250 patch set)\n'
+else
+  printf 'amdgpu: not loaded in this session\n'
+fi
+if [[ -r /usr/share/bc250-gfx1013/STATUS ]]; then
+  printf 'image build: %s\n' "$(value /usr/share/bc250-gfx1013/STATUS)"
+fi
+if [[ -r /usr/share/bc250-async-compute/VERSION ]]; then
+  while IFS= read -r line; do printf '%s\n' "$line"; done < /usr/share/bc250-async-compute/VERSION
+fi
+if command -v vulkaninfo >/dev/null 2>&1; then
+  printf 'Vulkan driver: %s\n' \
+    "$(vulkaninfo --summary 2>/dev/null | grep -m1 -i 'driverName' | sed 's/^[^:]*: *//')"
+  printf 'compute queue families: %s\n' \
+    "$(vulkaninfo 2>/dev/null | grep -c 'QUEUE_COMPUTE_BIT' || true)"
+fi
+printf 'Vulkan ICD pin: %s\n' "${VK_DRIVER_FILES:-<unset>}"
+
 section 'Compute units'
 if command -v systemctl >/dev/null 2>&1; then
   printf 'Automatic 40CU boot service: %s\n' "$(systemctl is-active bc250-force-40cu.service 2>/dev/null || true)"

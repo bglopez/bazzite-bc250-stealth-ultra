@@ -1,0 +1,12 @@
+Source: https://github.com/MastaG/linux-cachyos-bc250
+Commit: f05991ace64a42eda3d2dc583e96b8d35ce393e3
+License: GPL-2.0-only (see LICENSE)
+
+The BC-250 amdgpu patch series is vendored from this revision, unchanged,
+apart from the renumbering and the marker parameter patch described in
+NOTICE.
+
+The module is built against the base image's exact kernel: the kernel-devel
+RPM comes from the matching Universal Blue akmods image, the amdgpu sources
+from the kernel.org tarball for that version, and the OpenGamingCollective
+amdgpu changes from the kernel release the base image ships.

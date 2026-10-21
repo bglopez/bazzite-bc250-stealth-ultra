@@ -1,0 +1,41 @@
+Subject: [PATCH] amdgpu: read-only bc250_gfx1013 marker parameter
+
+Export a read-only module parameter that identifies this module as the
+BC-250 (GFX1013) patched build, so userspace can tell a patched amdgpu
+apart from a stock one.
+
+The patched amdgpu module is installed into the image as
+/usr/lib/modules/<kver>/updates/amdgpu.ko, which takes precedence over the
+stock module through modules.dep. Userspace can then read
+
+    /sys/module/amdgpu/parameters/bc250_gfx1013_v33
+
+to confirm the running driver carries the BC-250 kernel fixes. The image's
+diagnostics and driver-selection helpers use it to report which amdgpu is
+live; the parameter itself changes nothing.
+
+Adapted from the marker patch in Thunkar/bc250-bazzite-toolkit (MIT). The
+upstream comment described the patch set as "compute-queue lifecycle"
+patches; the vendored set here is the KFD/TTM/sclk/40CU group, so the
+description is corrected.
+
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -757,6 +757,17 @@
+ 	"Scheduling policy (0 = HWS (Default), 1 = HWS without over-subscription, 2 = Non-HWS (Used for debugging only)");
+ 
+ /**
++ * DOC: bc250_gfx1013_v33 (int)
++ * Read-only marker exported by builds that carry the BC-250 (GFX1013) kernel
++ * patch set. Userspace reads /sys/module/amdgpu/parameters/bc250_gfx1013_v33
++ * to tell a patched amdgpu apart from the stock one; it selects nothing and
++ * changes no behaviour.
++ */
++int amdgpu_bc250_gfx1013_v33 = 1;
++module_param_named(bc250_gfx1013_v33, amdgpu_bc250_gfx1013_v33, int, 0444);
++MODULE_PARM_DESC(bc250_gfx1013_v33, "BC-250 GFX1013 kernel patch set present (read-only marker)");
++
++/**
+  * DOC: hws_max_conc_proc (int)
+  * Maximum number of processes that HWS can schedule concurrently. The maximum is the
+  * number of VMIDs assigned to the HWS, which is also the default.

@@ -1,3 +1,4 @@
 cosign.key
 cosign.private
 recipes/recipe-ci.yml
+/.bluebuild-scripts_*

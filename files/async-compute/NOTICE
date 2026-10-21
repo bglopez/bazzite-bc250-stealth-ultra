@@ -1,0 +1,47 @@
+BC-250 Mesa patch series and helpers
+====================================
+
+This directory carries two separately licensed sets of files.
+
+Mesa patch series (patches/0001-0007)
+--------------------------------------
+Source:  https://github.com/MastaG/linux-cachyos-bc250
+Commit:  f05991ace64a42eda3d2dc583e96b8d35ce393e3
+License: GPL-2.0-only (LICENSE-GPL-2.0)
+
+  0001  expose the ACE compute queue and apply the GFX1013 async-compute
+        dispatch workaround
+  0002  DirectMesh v1.3.1, by lonewolf0622
+        (https://github.com/lonewolf0622/bc250meshtaskwork, release
+        directmesh-v1.3.1, commit 3977ab4)
+  0003  FSR4: deferred SDot lowering, based on the V3 work of
+        David Moraza Sanchez (https://github.com/dmorazasanchez/bc250-fsr4)
+  0004  FSR4: combined unroll and rematerialization
+  0005  FSR4: image preparation and texture shader
+  0006  FSR4: 1080p and 4K+ shader bucket variants
+  0007  FSR4: production defaults
+
+These patches are carried as their authors wrote them. The MastaG series
+drops the GFX10.1 IP identity hunk from the compute-queue patch because
+upstream Mesa added GFX1013 to that condition in 26.2.1.
+
+This image's own patch
+----------------------
+patches/0100-radv-ac-optional-bc250-ip-debug-print.patch
+    Written for this repository. MIT, see LICENSE-MIT.
+
+Helpers, tests and shader source
+---------------------------------
+Source:  https://github.com/tri3gubki-ops/bc250-async-compute-bazzite
+Commit:  56bf06b986f4639c32a669e9cdd31cdf7fba44b6
+License: MIT (LICENSE-MIT)
+
+  bc250-async-compute, bc250-game-trace, bc250-trace-report,
+  bc250-trace-sampler, test/
+
+The image build relocates the /usr/local paths in these scripts to /usr.
+
+Third-party code inside the patches
+-----------------------------------
+The FSR4 patches and DirectMesh carry normative tables and code from their
+original sources under their own licences, as stated in the patch headers.

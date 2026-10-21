@@ -1,1 +1,11 @@
-0.3.0
+BC-250 Mesa patch series 0.4.0
+
+Upstream: MastaG/linux-cachyos-bc250 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
+Mesa: the base image's own version, resolved at build time
+OGC patches: radv-defaults, vram-overcommit, fetched for that version
+
+0.4.0
+  - Mesa is built at the base image's Mesa version with the base image's OGC
+    patches, instead of a pinned pristine tarball.
+  - DirectMesh v1.3.1 replaces the old RADV_GFX103 mesh-shader approach.
+  - The maintained FSR4 series (0003-0007) is included.

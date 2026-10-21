@@ -1,0 +1,27 @@
+Subject: [PATCH] radv,ac: optional BC250_IP_DEBUG queue-topology print
+
+This image's own diagnostic aid, kept separate from the vendored upstream
+series so the upstream patches can be re-vendored without conflicts.
+
+Prints the compute-queue topology the driver resolved for every IP block
+(available rings, userq mask, resulting queue count) when BC250_IP_DEBUG is
+set in the environment. Off by default: the print goes to stderr and is
+intended for a one-off diagnostic run, not for normal sessions.
+
+    BC250_IP_DEBUG=1 vulkaninfo --summary
+
+Applies after the 0001-0007 series; the hunk sits in ac_gpu_info.c below the
+queue-count assignment, which those patches also touch.
+
+--- a/src/amd/common/ac_gpu_info.c
++++ b/src/amd/common/ac_gpu_info.c
+@@ -488,6 +488,9 @@
+        */
+       info->ip[ip_type].num_queues = util_bitcount(ip_info->available_rings);
+    }
++   if (debug_get_bool_option("BC250_IP_DEBUG", false))
++      fprintf(stderr, "BC250_IP_DEBUG: ip_type=%u available_rings=0x%x userq_mask=0x%x -> num_queues=%u\n",
++              ip_type, ip_info->available_rings, info->userq_ip_mask, info->ip[ip_type].num_queues);
+ 
+    /* Gfx6-8 don't set ip_discovery_version. */
+    if (ip_info->ip_discovery_version) {

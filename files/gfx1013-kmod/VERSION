@@ -1,0 +1,23 @@
+BC-250 amdgpu kernel patch series 1.0.0
+
+Upstream: MastaG/linux-cachyos-bc250 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
+MastaG file -> this series:
+  0006-gfx1013-pasid-tlb-invalidation.patch  -> 0001
+  0007-gfx1013-compute-gfxoff-guard.patch    -> 0002
+  0008-bc250-kfd-flush-tlb-by-runlist.patch  -> 0003
+  0009-amdgpu-ttm-null-page-guard.patch     -> 0004
+  0010-cyan-skillfish-sclk-range.patch      -> 0005
+  0011-bc250-40cu-unlock.patch               -> 0006
+
+0007 is adapted from Thunkar/bc250-bazzite-toolkit
+@f2b3d7687af848744084a355a01be3d28e0dce75 (MIT), relicensed GPL-2.0 as a
+kernel patch; only the parameter description was corrected.
+
+Kernel: the base image's own kernel, with the OpenGamingCollective amdgpu
+changes applied on top of the kernel.org sources.
+
+1.0.0
+  - First release. The series is intentionally limited to patches that are
+    inert outside a BC-250 or that fix a crash: the KFD TLB and compute
+    idle paths, a TTM NULL guard, the kernel-side sclk range, the 40CU
+    unlock as an opt-in module parameter, and a read-only marker.

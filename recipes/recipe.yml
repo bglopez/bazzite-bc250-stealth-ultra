@@ -4,8 +4,12 @@ base-image: ghcr.io/ublue-os/bazzite-deck
 image-version: stable
 alt-tags: [staging]
 stages:
+  # The private RADV is built at the base image's own Mesa version and with
+  # the base image's OpenGamingCollective patches, so it stays in step with
+  # the Mesa Bazzite ships. That requires this stage to start FROM the base
+  # image: the version comes from the base image's own RPM.
   - name: async-radv
-    from: registry.fedoraproject.org/fedora:44
+    from: ghcr.io/ublue-os/bazzite-deck:stable
     modules:
       - type: files
         files:
@@ -14,6 +18,24 @@ stages:
       - type: script
         scripts:
           - build-async-radv.sh
+  # Patched amdgpu for the base image's exact kernel. The kernel-devel RPM
+  # comes from the matching Universal Blue akmods image, and the amdgpu
+  # sources from kernel.org plus the OpenGamingCollective changes that the
+  # base image's kernel carries.
+  - name: gfx1013-kmod
+    from: ghcr.io/ublue-os/bazzite-deck:stable
+    modules:
+      - type: copy
+        from: ghcr.io/ublue-os/akmods:ogc-44-7.2.9-ogc3.1.fc44.x86_64
+        src: kernel-rpms
+        dest: /tmp/kernel-rpms
+      - type: files
+        files:
+          - source: gfx1013-kmod
+            destination: /tmp/bc250-gfx1013
+      - type: script
+        scripts:
+          - build-gfx1013-kmod.sh
 modules:
   - type: dnf
     repos:
@@ -27,6 +49,10 @@ modules:
         - umr
   - type: copy
     from: async-radv
+    src: /out/usr/
+    dest: /usr/
+  - type: copy
+    from: gfx1013-kmod
     src: /out/usr/
     dest: /usr/
   - type: files
@@ -66,6 +92,12 @@ modules:
   - type: script
     scripts:
       - configure-radv.sh
+  # The patched amdgpu replaces the stock module before the initramfs is
+  # regenerated, so the initramfs carries the patched driver and not the
+  # stock one.
+  - type: script
+    scripts:
+      - install-gfx1013-kmod.sh
   - type: initramfs
   - type: script
     scripts:

@@ -32,6 +32,23 @@ jobs:
             --format '{{.Manifest.Digest}}')
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Resolve upstream base image kernel
+        id: kernel
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          release=$(docker buildx imagetools inspect \
+            "ghcr.io/ublue-os/bazzite-deck:$CHANNEL" \
+            --format '{{json .Image}}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["Labels"]["ostree.linux"])')
+          [[ "$release" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?-ogc[0-9]+\.[0-9]+\.fc[0-9]+\.x86_64$ ]]
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          major=$(sed -E 's/.*\.fc([0-9]+)\..*/\1/' <<<"$release")
+          # The amdgpu module is built against the base image's exact kernel,
+          # so the matching akmods image has to exist before the build runs.
+          akmods="ghcr.io/ublue-os/akmods:ogc-${major}-${release}"
+          echo "akmods image: $akmods"
+          docker buildx imagetools inspect "$akmods" >/dev/null
       - name: Restore last successfully published base
         uses: actions/cache/restore@v4
         with:
@@ -103,9 +120,11 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
         run: |
           staging_tag="staging-${CHANNEL}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          sed -e "s/^alt-tags: \[staging\]$/alt-tags: [$staging_tag]/" \
-              -e "s/^image-version: stable$/image-version: $CHANNEL/" \
-              recipes/recipe.yml > recipes/recipe-ci.yml
+          python3 .github/render-recipe.py \
+            --channel "$CHANNEL" \
+            --kernel-release "${{ steps.kernel.outputs.release }}" \
+            --staging-tag "$staging_tag" \
+            --output recipes/recipe-ci.yml
           bluebuild build --no-sign -v recipes/recipe-ci.yml
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/bazzite-bc250-stealth-ultra"
           digest=$(docker buildx imagetools inspect "$image:$staging_tag" --format '{{.Manifest.Digest}}')

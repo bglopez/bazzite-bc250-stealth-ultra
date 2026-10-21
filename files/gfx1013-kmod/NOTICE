@@ -1,0 +1,68 @@
+BC-250 amdgpu kernel patch series
+================================
+
+patches/0001-0006
+-----------------
+Source:  https://github.com/MastaG/linux-cachyos-bc250
+Commit:  f05991ace64a42eda3d2dc583e96b8d35ce393e3
+License: GPL-2.0-only (LICENSE)
+
+  0001  GFX1013 PASID TLB invalidation
+        The KIQ-routed PASID TLB invalidation corrupts sustained KFD
+        workloads on this die. Route GFX1013 through MMIO instead.
+        Original work: the compute-queue research in
+        https://github.com/DryhoppedIPA/bc250-gfx1013-fix
+
+  0002  GFX1013 compute gfxoff guard
+        amdgpu_gfx_off_ctrl() is not reached for GFX1013 by the generic
+        gfx10 path, so compute-idle transitions leave the GPU in a state
+        the compute queue does not survive. Drive it explicitly.
+
+  0003  BC-250 KFD TLB flush by runlist
+        The HWS path on this chip does not expose a usable PASID to VMID
+        mapping to the normal gfx10 TLB flush. Rebuild the active runlist
+        instead, which is the invalidation path measured to work here.
+
+  0004  amdgpu TTM NULL page guard
+        Partial TTM population can leave NULL entries in the page vector.
+        Four lines that turn a NULL dereference into a no-op.
+
+  0005  Cyan Skillfish sclk range
+        The kernel-side clamp was 1000-2000 MHz; the part runs 350-2230.
+        Widening it lets the governor reach the 40CU sweet spot and lets
+        the card idle lower.
+
+  0006  BC-250 40CU unlock
+        From duggasco (https://github.com/duggasco/bc250-40cu-unlock).
+        Writes CC_GC_SHADER_ARRAY_CONFIG, SPI_PG_ENABLE_STATIC_WGP_MASK and
+        RLC_PG_ALWAYS_ON_WGP_MASK during CU enumeration. Off by default:
+        amdgpu.bc250_cc_write_mode defaults to 0 and every write is guarded
+        on PCI device id 0x13FE.
+
+patches/0007
+------------
+Source:  https://github.com/Thunkar/bc250-bazzite-toolkit
+Commit:  f2b3d7687af848744084a355a01be3d28e0dce75
+License: GPL-2.0-only (LICENSE). The upstream file is MIT; it is a kernel
+patch and is carried as GPL-2.0.
+
+  0007  Read-only bc250_gfx1013 marker parameter
+        Lets userspace tell a patched amdgpu from the stock one. The
+        upstream description called the series "compute-queue lifecycle"
+        patches; that description is corrected here.
+
+Not carried
+-----------
+The 8-core telemetry series (MastaG 0001-0004) is not included. It only
+matters on a board with the SMU firmware patched for eight cores, which
+this image does not support, and it rewrites the SMU metrics interfaces.
+
+The display patches (DCN201 and CH7218, MastaG 0012-0017 and 0020) are not
+included. They are specific to DP to HDMI 2.1 active adapters and to the
+governor's forced clock commits, and they need board-specific validation
+before they belong in a general image.
+
+The deferred-OD-commit series (MastaG's disabled/ directory) is not
+included. It is the documented fix for a governor commit racing HDMI FRL
+link training, and it is worth reading before adopting; it is not a change
+to ship blind.

@@ -77,6 +77,44 @@ test -x /usr/share/bc250-async-compute/test/bc250-ace-soak
 test -f /usr/share/vulkan/icd.d/radeon_icd.i686.json
 test -s /etc/environment.d/95-bc250-async-compute.conf
 test -s /etc/pki/containers/bazzite-bc250-stealth-ultra.pub
+# Provenance for the vendored patch series and the fetched OGC patches.
+test -s /usr/share/bc250-async-compute/UPSTREAM
+test -s /usr/share/bc250-async-compute/NOTICE
+test -s /usr/share/bc250-async-compute/LICENSE-MIT
+test -s /usr/share/bc250-async-compute/LICENSE-GPL-2.0
+test -s /usr/share/bc250-async-compute/VERSION
+test -s /usr/share/bc250-async-compute/PATCH-SERIES
+grep -q '^Mesa ' /usr/share/bc250-async-compute/VERSION
+grep -q 'OGC patches: radv-defaults vram-overcommit' /usr/share/bc250-async-compute/VERSION
+
+# The patched amdgpu. Either it is installed and is the module that resolves
+# and is the copy in the initramfs, or the build recorded why it is not.
+krel=$(rpm -q kernel-core --qf '%{version}-%{release}.%{arch}')
+test -s /usr/share/bc250-gfx1013/STATUS
+test -s /usr/share/bc250-gfx1013/UPSTREAM
+test -s /usr/share/bc250-gfx1013/NOTICE
+test -s /usr/share/bc250-gfx1013/LICENSE
+if grep -q '^ok ' /usr/share/bc250-gfx1013/STATUS; then
+  modinfo -F parm -k "$krel" amdgpu | grep -q bc250_gfx1013_v33
+  resolved=$(modinfo -n -k "$krel" amdgpu)
+  test -f "$resolved"
+  # The initramfs must carry the patched driver, not the stock one: the
+  # stock amdgpu is what dracut copies by default, and it is what would
+  # load at early boot.
+  rm -rf /tmp/bc250-initramfs-check
+  mkdir -p /tmp/bc250-initramfs-check
+  (cd /tmp/bc250-initramfs-check && lsinitrd --unpack \
+    "/usr/lib/modules/$krel/initramfs.img" '*/amdgpu/amdgpu.ko' >/dev/null)
+  packed=$(find /tmp/bc250-initramfs-check -name amdgpu.ko -print -quit)
+  test -n "$packed"
+  grep -q bc250_gfx1013_v33 "$packed"
+  rm -rf /tmp/bc250-initramfs-check
+else
+  # Not built or not installed: the reason must be recorded, and the stock
+  # module must still be the one that resolves.
+  grep -Eq '^(not built|not installed): ' /usr/share/bc250-gfx1013/STATUS
+  ! modinfo -F parm -k "$krel" amdgpu | grep -q bc250_gfx1013_v33
+fi
 python3 - <<'PY'
 import json
 import re
@@ -93,7 +131,16 @@ assert not any(assignment.match(line) and assignment.match(line).group(1)
 icd = json.loads(Path('/usr/lib/bc250-radv/share/vulkan/icd.d/radeon_icd.x86_64.json').read_text())
 assert Path(icd['ICD']['library_path']).is_file()
 policy = json.loads(Path('/etc/containers/policy.json').read_text())
-rules = policy['transports']['docker']['ghcr.io/bglopez/bazzite-bc250-stealth-ultra']
-assert any(rule['type'] == 'sigstoreSigned' for rule in rules)
+docker = policy['transports']['docker']
+# The signing module writes a policy entry for this image's own reference.
+# The registry part differs between a local build and a CI push (BlueBuild
+# uses ghcr.io/<owner> in GitHub Actions and localhost otherwise), so match
+# on the image name rather than a hardcoded reference.
+entries = {ref: rules for ref, rules in docker.items()
+           if ref.endswith('bazzite-bc250-stealth-ultra')}
+assert entries, f'no container policy entry for this image: {sorted(docker)}'
+assert any(rule['type'] == 'sigstoreSigned'
+           for rules in entries.values() for rule in rules), \
+    'the container policy entry for this image is not sigstoreSigned'
 PY
 printf 'BC-250 image health checks passed.\n'

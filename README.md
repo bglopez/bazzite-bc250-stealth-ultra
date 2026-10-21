@@ -12,14 +12,17 @@ The direct base is `ghcr.io/ublue-os/bazzite-deck:stable` for `:latest` and `ghc
 | --- | --- |
 | 40CU dispatch | Enables `bc250-force-40cu.service` to request all 40 CUs on every boot, after GPU initialization and saved CU settings, before the display manager. Adds enable, recovery, and log commands. |
 | 40CU governor cap | Applies the community 40CU sweet-spot (`1500 MHz / 900 mV`) as the default `cyan-skillfish-governor-smu` config at image build, because the stock governor curve is 24CU-oriented. `ujust bc250-cu-governor-restore` returns to the package default. |
-| Vulkan async compute | Builds Mesa 26.2.5 RADV with three pinned BC-250 patches into `/usr/lib/bc250-radv`. Selects this patched driver globally for 64-bit Vulkan applications in new desktop and game sessions; retains stock 32-bit RADV and software rendering. |
+| Vulkan async compute | Builds a private RADV into `/usr/lib/bc250-radv` at the **base image's own Mesa version**, with the base image's OpenGamingCollective patches applied, so it tracks the Mesa Bazzite ships instead of forking off on a pinned tarball. Selects this patched driver globally for 64-bit Vulkan applications in new desktop and game sessions; retains stock 32-bit RADV and software rendering. |
+| Mesh and task shaders | Ships DirectMesh v1.3.1 in the private RADV, so `VK_EXT_mesh_shader` works on this chip. On by default when a BC-250 is present; `RADV_DIRECTMESH=0` turns it off. |
+| FSR4 | Ships the maintained FSR4 series in the private RADV, so FSR 4 upscaling works without the native packed dot product. See [FSR4](#fsr4). |
+| Patched amdgpu | Builds a patched `amdgpu` module against the base image's **exact kernel** (KFD TLB and compute-idle paths, a TTM NULL guard, the kernel-side sclk range, an opt-in 40CU module parameter) and installs it in place of the stock module, in the image and in the initramfs. Falls back to the stock module with a recorded reason if the build does not apply to a new kernel. |
 | Graphics session defaults | Sets `AMD_VULKAN_ICD=RADV` and `RADV_DEBUG=nohiz` in `/etc/environment`, preserving unrelated base-image settings. `MESA_LOADER_DRIVER_OVERRIDE=zink` was **removed**; see [Retired: session-wide zink](#retired-session-wide-zink). |
 | Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
 | Game benchmarks | Adds `bc250-benchmark` for MangoHud frame captures, system context, and before/after comparisons. Driver and unified-heap overrides apply only to the launched game. |
 | Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
 | CPU ACPI fix | Includes e-tho `bc250-acpi-fix` v1.1.1 CPU idle/P-state/stub tables in the early initramfs by default; rebuilds and checks the initramfs with each image build. |
 | Memory policy | Disables ZRAM and enables **zswap with lz4** (`vm.swappiness=180`), matching community guidance for 16 GB BC-250 boards. Optional disk swapfile remains opt-in. |
-| Diagnostics | Adds `bc250-diag` and `ujust bc250-diagnostics` for governor state, clocks, temperatures, kernel arguments, and available driver CU topology. |
+| Diagnostics | Adds `bc250-diag` and `ujust bc250-diagnostics` for governor state, clocks, temperatures, kernel arguments, the graphics driver stack (patched or stock amdgpu, driver version, compute queue families), and available driver CU topology. |
 | Optional disk swap | Adds `bc250-memory` and `ujust` helpers for an opt-in, persistent 8 GiB Btrfs swapfile at priority 10. No swapfile is allocated by the image build or automatically at boot. |
 | Storage maintenance | Explicitly enables `fstrim.timer`; limits persistent journal use to 512 MiB while reserving 1 GiB free through a journald drop-in. |
 | CPU mitigations | Adds `mitigations=off` to the deployment's kernel arguments, with the security tradeoff described below. |
@@ -29,11 +32,11 @@ The direct base is `ghcr.io/ublue-os/bazzite-deck:stable` for `:latest` and `ghc
 
 The driver and helpers are baked into the image's OSTree-managed `/usr`; they do not require compiling or installing software on the host. Driver-selection defaults ship in `/etc`, where local changes can persist across updates. Optional disk swap is host state in `/var`, created only when requested.
 
-To limit image size, Mesa compilers, development headers, downloaded sources, and build caches stay in the disposable `async-radv` stage; only `/out/usr` is copied into the final image. The private RADV driver is stripped during installation, and the BC-250 package installation skips optional RPM dependencies while retaining required dependencies. Image checks still verify the driver's shared-library dependencies. Actual size savings require a rebuilt-image comparison. Removing files inherited from Bazzite in a later layer alone does not shrink the underlying base layers.
+To limit image size, Mesa compilers, development headers, downloaded sources, and build caches stay in the disposable `async-radv` stage; only `/out/usr` is copied into the final image. The kernel build stays in the disposable `gfx1013-kmod` stage, and only the built module is copied across. The private RADV driver is stripped during installation, and the BC-250 package installation skips optional RPM dependencies while retaining required dependencies. Image checks still verify the driver's shared-library dependencies. Actual size savings require a rebuilt-image comparison. Removing files inherited from Bazzite in a later layer alone does not shrink the underlying base layers.
 
 The maintained update tags are `:latest` and `:testing`. The legacy `:test` tag is no longer updated; users following it should switch to `:latest` for upstream stable or `:testing` for upstream testing. The 40CU boot service remains enabled by default, with no manual unlock step required. If you previously masked it for recovery, that local mask persists; run `ujust bc250-enable-40cu-boot` when you want to enable it again.
 
-Governor clocks and voltages are **capped by default to the 40CU sweet spot** (1500 MHz / 900 mV, range 1000–1500), applied at image build via `bc250-governor-profile sweet-spot`. This is intentional: the package's stock curve is a **24CU** profile and can over-drive a board running the unlock. Re-apply with `ujust bc250-cu-sweet-spot`, restore the package default with `ujust bc250-cu-governor-restore`, or edit `/etc/cyan-skillfish-governor-smu/config.toml` for higher clocks (see the 40CU safety table below). Display resolution, refresh rate, game settings, and Steam launch options are not changed by this image. The optional signed-dot-product/FSR4 patch from the async project's documentation is not included; see [FSR4](#fsr4-is-possible-but-not-shipped-here) for the external route. A base-image rebuild does not automatically advance the separately pinned Mesa source version.
+Governor clocks and voltages are **capped by default to the 40CU sweet spot** (1500 MHz / 900 mV, range 1000–1500), applied at image build via `bc250-governor-profile sweet-spot`. This is intentional: the package's stock curve is a **24CU** profile and can over-drive a board running the unlock. Re-apply with `ujust bc250-cu-sweet-spot`, restore the package default with `ujust bc250-cu-governor-restore`, or edit `/etc/cyan-skillfish-governor-smu/config.toml` for higher clocks (see the 40CU safety table below). Display resolution, refresh rate, game settings, and Steam launch options are not changed by this image. The private RADV follows the base image's Mesa version, so a base-image rebuild advances it automatically.
 
 ## Hardware and BIOS prerequisites
 
@@ -69,7 +72,9 @@ Check [Actions](https://github.com/bglopez/bazzite-bc250-stealth-ultra/actions) 
 
 The workflow also checks both upstream Bazzite Deck channels daily at 06:17 UTC. Scheduled runs rebuild each channel only when its upstream digest differs from that channel's last successful publication, or when its cached record is unavailable. Pushes and manual runs always build both channels. The record is updated only after signing, verification, and tag promotion succeed. This publishes an available update; it does not reboot or update your host automatically.
 
-Build-time health checks require the CU manager, governor, sensor kernel module, enabled boot services, custom helpers, and image signing policy. These checks run offline without starting services or writing GPU registers.
+The recipe is rendered per channel by `.github/render-recipe.py`. Two things in it depend on the base image and are resolved at build time rather than written down: the two build stages start `FROM` the base image, because the private RADV is built at the base image's own Mesa version and the amdgpu module is built against the base image's own kernel; and the akmods image that provides `kernel-devel` carries the base kernel's release, which comes from the base image's `ostree.linux` label. The workflow resolves that label, checks the matching akmods image exists, and fails early with a clear message if it does not.
+
+Build-time health checks require the CU manager, governor, sensor kernel module, enabled boot services, custom helpers, and image signing policy. These checks run offline without starting services or writing GPU registers. They also confirm that the private driver was built against the base image's Mesa version with the OGC patches applied, and that the amdgpu module in the image is the patched one and is the copy in the initramfs.
 
 ## Maintenance helpers
 
@@ -197,7 +202,7 @@ If the system does not boot, select a working previous deployment from the bootl
 - `:latest` and `:testing` are mutable tags tracking their respective upstream channels; consider pinning a tested image digest for reproducibility.
 - This project is independent of Bazzite.
 - Further reading: [elektricM BC-250 docs](https://elektricm.github.io/amd-bc250-docs/), [katzzero unofficial community guide](https://github.com/katzzero/bc250-unofficial-community-guide), [NexGen3D SteamMachine](https://github.com/NexGen-3D-Printing/SteamMachine), [62fixolab patched images](https://github.com/62fixolab/Latest-Bazzite-AMD-BC-250-Patched-Images).
-- Not carried in this image (community projects, evaluate separately): DirectMesh, HelixSR/OptiScaler upscaler, Vulkan_NullVRS, `bc250-metrics-fix-bazzite` (8-core only), 8-core unlocks, BIOS mods.
+- Not carried in this image (community projects, evaluate separately): HelixSR/OptiScaler upscaler, Vulkan_NullVRS, `bc250-metrics-fix-bazzite` (8-core only), 8-core unlocks, BIOS mods.
 
 ## BC-250 40CU base and CPU mitigations
 
@@ -240,13 +245,19 @@ Never set governor voltage below **700 mV** (locks the GPU at 1500 MHz or crashe
 
 **CU count caveats:** the two shader engines run symmetrically, so only 24/28/32/36/40 CU counts are meaningful (an "38 CU" config is really 36). `amdgpu.disable_cu=` indexes **WGP pairs** (`SE.SH.WGP`), not individual CUs. After a live unlock, `amdgpu_gca_config` can still show 24 — verify with `ujust bc250-cu-status` or `RADV_DEBUG=info vulkaninfo --summary | grep num_cu`. On Bazzite the DRM node is often `card1`/`dri` index 1. Bad CUs may only fail under RT or long sessions (Doom: The Dark Ages / CS2 are sensitive); use the live manager's per-WGP disable to bisect, and restore stock dispatch (`ujust bc250-recover-stock`) if games crash while compute tests pass.
 
-### FSR4 is possible, but not shipped here
+### FSR4
 
-The board's native `v_dot4_i32_i8` path is broken on gfx1013 — upstream Mesa still excludes `CHIP_GFX1013` from `has_accelerated_dot_product` — and direct testing returns `0` where the correct result is `70`. That part has not changed. **What has changed is the workaround**: [dmorazasanchez/bc250-fsr4](https://github.com/dmorazasanchez/bc250-fsr4) V3 makes FSR 4 usable by leaving the native signed packed-dot instruction *disabled* and instead lowering the operation in software via a deferred-SDot optimization round, removing the catastrophic VGPR spill/scratch behaviour the fallback otherwise causes (256→168 VGPR, 1314→0 spills on the worst-captured shader). The maintainer reports ~58→63 FPS on one Cyberpunk 2077 development scene with FSR 4.1.1 INT8 and frame generation off. Treat that as a single-scene figure, not a general result.
+The board's native `v_dot4_i32_i8` path is broken on gfx1013 — upstream Mesa still excludes `CHIP_GFX1013` from `has_accelerated_dot_product` — and direct testing returns `0` where the correct result is `70`. That part has not changed. **What has changed is the workaround**: [dmorazasanchez/bc250-fsr4](https://github.com/dmorazasanchez/bc250-fsr4) V3 makes FSR 4 usable by leaving the native signed packed-dot instruction *disabled* and instead lowering the operation in software via a deferred-SDot optimization round, removing the catastrophic VGPR spill/scratch behaviour the fallback otherwise causes (256→168 VGPR, 1313→0 spills on the worst-captured shader). The maintainer reports ~58→63 FPS on one Cyberpunk 2077 development scene with FSR 4.1.1 INT8 and frame generation off. Treat that as a single-scene figure, not a general result.
 
-This image **does not include it**, and the signed-dot-product patch from the async project's documentation is likewise not included. That patch targets the native path, which is the one that is broken. Adopting the external route means installing a second private RADV alongside `/usr/lib/bc250-radv` and selecting it per-game via `VK_DRIVER_FILES`; the two drivers are not validated together here. Measure on your own board before relying on it.
+This image **ships that workaround**, in the maintained form carried by the [MastaG/linux-cachyos-bc250](https://github.com/MastaG/linux-cachyos-bc250) series that the private RADV is built from (patches `0003` to `0007`: the deferred-SDot lowering, a combined unroll and rematerialization pass, the image-preparation and texture shader variants, the 1080p and 4K+ shader buckets, and the production defaults that switch the candidates on). The signed-dot-product patch that targets the native path is **not** included: that path is the broken one.
 
-If you evaluate it, keep it per-game rather than system-wide, exactly as `bc250-benchmark --driver stock|patched` does for driver comparisons.
+The candidates are on by default and can be switched off individually. `BC250_FSR4_DISABLE=1` turns the profile-specific rewrites and the image-preparation replacement off; the generic GFX1013 lowering and the independent masked-store correctness guard stay active. The remaining switches are `BC250_FSR4_IMAGEPREP`, `BC250_FSR4_TEXTURE`, `BC250_FSR4_RESOLUTION_VARIANTS` and `BC250_FSR4_RESOLUTION_GUARD`. To turn them off for one title, use the Steam launch option:
+
+```text
+BC250_FSR4_DISABLE=1 %command%
+```
+
+Two caveats from the upstream series, worth repeating: the image-preparation and texture measurements are each about 1% at n=2 per arm, so treat small uplifts as noise; and the FSR4 shaders are matched to FSR 4.1.1 INT8 by exact shader identity, so a different FSR build or a resolution outside the matched bucket produces no uplift and no warning.
 
 The unlock revision is pinned in `files/system/usr/share/bc250-40cu/vendor/bc250-cu-live-manager.UPSTREAM_REF`, with file hashes in `files/system/usr/share/bc250-40cu/SHA256SUMS`. Update both when intentionally upgrading the manager. Downloads happen only during image builds; boot-time unlocking works offline. The separate `duggasco/bc250-40cu-unlock` kernel-patch/research bundle is not required by this runtime service.
 
@@ -321,13 +332,55 @@ Driver selection is split across three places:
 
 `ujust bc250-async-disable` / `ujust bc250-async-enable` rewrite the environment.d/profile.d files; the two `/etc/environment` graphics defaults are left alone. `bc250-async-compute steam` prints the recommended per-game Steam launch options; `bc250-async-compute env` shows the session selection; `bc250-async-compute always status` reports whether the patched driver is the system default.
 
-The image builds a private Mesa 26.2.5 RADV with the three patches from [bc250-async-compute-bazzite](https://github.com/tri3gubki-ops/bc250-async-compute-bazzite), pinned to commit `56bf06b986f4639c32a669e9cdd31cdf7fba44b6`. Mesa's source archive is SHA-256 checked. The patches were dry-run against the 26.2.5 tarball and apply with small offsets. The build stage's compilers and headers are not copied into the final image.
+The image builds a private RADV from the **base image's own Mesa version**, not from a separately pinned tarball. The build stage starts `FROM` the base image, reads the version out of the base image's own `mesa-vulkan-drivers` package, downloads that release's source archive, and verifies it against the SHA-256 published in the upstream release notes. A missing or mismatched checksum fails the build.
 
-The patched 64-bit driver lives at `/usr/lib/bc250-radv` and is selected globally for new graphical sessions and login shells. Stock Mesa remains installed, including its 32-bit driver. Current system game profiles are used through drirc symlinks. The optional signed-dot-product patch is not included; see [FSR4](#fsr4-is-possible-but-not-shipped-here).
+On top of that it applies the [MastaG/linux-cachyos-bc250](https://github.com/MastaG/linux-cachyos-bc250) BC-250 patch series, vendored unchanged at commit `f05991ace64a42eda3d2dc583e96b8d35ce393e3`: the compute-queue exposure and the GFX1013 async-compute dispatch workaround, DirectMesh v1.3.1 for mesh and task shaders, and the FSR4 series. It then applies the base image's own OpenGamingCollective patches (`radv-defaults`, `vram-overcommit`) for that Mesa version, so the private driver exposes the same features as the system driver. A missing OGC patch fails the build rather than shipping a driver that silently diverges from the base image. Provenance, licences and the exact patch set ship in `/usr/share/bc250-async-compute`. The build stage's compilers and headers are not copied into the final image.
+
+The patch order is fixed by the build script: the vendored series first, then the OGC patches. OGC's `vram-overcommit` patch inserts into `radv_amdgpu_bo.c` where DirectMesh's first hunk expects the pristine file, so the reverse order conflicts.
+
+The patched 64-bit driver lives at `/usr/lib/bc250-radv` and is selected globally for new graphical sessions and login shells. Stock Mesa remains installed, including its 32-bit driver. Current system game profiles are used through drirc symlinks.
+
+### Mesh and task shaders
+
+The private RADV carries DirectMesh v1.3.1, so `VK_EXT_mesh_shader` (Mesh and Task), `VK_KHR_fragment_shader_barycentric` and `VK_EXT_device_generated_commands` work on this chip. Some D3D12 titles need this to start at all.
+
+DirectMesh is on by default when a BC-250 is present, and `RADV_DIRECTMESH=0` turns it off. It only ever affects GFX1013. Upstream, by contrast, exposes mesh, barycentrics and a no-op variable-rate shading extension on every GFX1013 device; here every part of it requires the switch.
+
+Mesh shaders raise the GPU's load and clock requirements. If a game draws wrongly or hangs, turn them off for that title only, with the Steam launch option:
+
+```text
+RADV_DIRECTMESH=0 %command%
+```
+
+and add `amdgpu.gpu_recovery=0` to the kernel arguments if you want the machine to stay reachable over SSH while collecting `dmesg`.
+
+### The patched amdgpu module
+
+The kernel-side BC-250 fixes are amdgpu changes, so they need a rebuilt module rather than a userspace patch. The image builds one against the base image's **exact kernel**: the `kernel-devel` RPM comes from the matching Universal Blue akmods image, the amdgpu sources from the kernel.org tarball for that version, and the OpenGamingCollective amdgpu changes from the kernel release the base image ships.
+
+The vendored series is deliberately small, and each patch is either inert outside a BC-250 or fixes a crash:
+
+| Patch | Effect |
+| --- | --- |
+| GFX1013 PASID TLB invalidation | The KIQ-routed PASID TLB invalidation corrupts sustained KFD workloads on this die; route it through MMIO. |
+| GFX1013 compute gfxoff guard | Drive `amdgpu_gfx_off_ctrl()` explicitly on compute-idle transitions, which the generic gfx10 path never reaches for this chip. |
+| BC-250 KFD TLB flush by runlist | Rebuild the active runlist, the invalidation path measured to work on this die. |
+| amdgpu TTM NULL page guard | Partial TTM population can leave NULL entries in the page vector; skip them instead of dereferencing. |
+| Cyan Skillfish sclk range | The kernel-side clamp was 1000–2000 MHz; the part runs 350–2230. This does not change the image's default 1500 MHz cap. |
+| BC-250 40CU unlock | The same three register writes the runtime manager does, as a module parameter. **Off by default** (`amdgpu.bc250_cc_write_mode=0`); the image uses the runtime manager instead. |
+| bc250_gfx1013 marker | A read-only parameter, so userspace can tell a patched amdgpu from the stock one. |
+
+The module **replaces** the stock one in place rather than being added under `updates/`. Both work, but dracut's no-hostonly pass copies the whole GPU module set into the initramfs, so a module added under `updates/` ends up next to the stock one: the initramfs then carries two copies of a 45 MB driver and depends on `modules.dep` to pick the right one. Replacing in place leaves exactly one `amdgpu.ko`, in the initramfs and in the image, and it is the patched one. The initramfs is regenerated afterwards so the early-boot copy is the patched driver, and the image check unpacks the initramfs and confirms it.
+
+**This step never fails the image build.** A kernel bump upstream can make the patches stop applying, and the right response to that is to ship the image with the stock kernel and an explanation, not to ship nothing. When the module is not built, `/usr/share/bc250-gfx1013/STATUS` records why and the stock module is used. `bc250-diag` reports which amdgpu is live.
+
+The async compute path does not depend on the patched module. The Mesa patches that expose the compute queue are safe on a stock kernel, and the kernel patches that *do* matter are the KFD paths, which only run under ROCm or HIP. If you later run ROCm workloads, the patched module is what makes them correct.
 
 This exposes the BC-250's dedicated compute queue. Performance gains depend on the game actually using that queue; queue availability and passing correctness tests do not establish higher FPS. Flatpak applications have separate graphics runtimes and are not validated by this integration.
 
 Historical validation of an earlier image build on the owner's BC-250 with kernel `7.2.9-ogc2.1.fc44.x86_64`: the locally built driver exposed four dedicated compute queues, passed all five correctness tests, and completed a 60-second soak with 272 rounds and 356 million verified words. GPU temperature stayed at 62–63 °C during that test. After deployment and reboot, the installed driver also passed all five correctness tests, and the owner confirmed that games work with the updated image. These checks establish functionality; no FPS improvement has been measured for Cyberpunk 2077, Luma Island, or SMITE 2. Other community builds of the gfx1013 compute-queue patch report larger gains in some titles (for example ~+20–25% in Cyberpunk at 1440p on 40CU) — measure on your board with `bc250-benchmark`.
+
+**The current build has not been through that validation.** The driver is now built at the base image's Mesa version with DirectMesh and the FSR4 series added, and the image now ships a patched amdgpu module. The compute-queue path is unchanged, but the mesh, FSR4 and kernel-module parts are new and need hardware testing on your own board before you rely on them.
 
 After updating and rebooting:
 
@@ -447,7 +500,7 @@ For **PWM fan control** (not included), the community uses the out-of-tree `nct6
 
 ## Read-only BC-250 diagnostics
 
-On this image, run `bc250-diag` as a regular user. It prints the governor service state, BC-250 GPU clock levels (or readable hwmon frequency values), thermal sensor readings, the running kernel command line, and KFD driver-reported CU topology when available. A `*` in the GPU SCLK table marks the current level. You can save the report with `bc250-diag > bc250-report.txt`.
+On this image, run `bc250-diag` as a regular user. It prints the governor service state, BC-250 GPU clock levels (or readable hwmon frequency values), thermal sensor readings, the running kernel command line, the graphics driver stack (patched or stock amdgpu, the private driver's Mesa version and patch series, the Vulkan driver and its compute queue families), and KFD driver-reported CU topology when available. A `*` in the GPU SCLK table marks the current level. You can save the report with `bc250-diag > bc250-report.txt`.
 
 The helper tolerates missing devices and sensors and never changes clocks, CU settings, or services. KFD topology describes what the driver initialized; it does **not** confirm the live 40CU SPI/WGP dispatch table. The upstream `bc250-cu-live-manager status` uses privileged register access, so this helper does not invoke it or prompt for `sudo`. This image requests full 40CU dispatch at boot; use `ujust bc250-cu-status` to verify the live result.
 
@@ -469,6 +522,9 @@ Board quirks the image cannot fix, plus host-side workarounds from the BC-250 co
 | Games crash mid-scene at 512 MB dynamic VRAM | Try a 6 GB fixed BIOS split for AAA titles that need a large VRAM window (some titles are the reverse — measure) |
 | Memory-heavy games crash | See [Memory policy notes](#memory-policy-notes-zram-vs-swapfile) |
 | No hardware video encode/decode | VCN is power-gated / unusable publicly; use software encode (x264) in OBS etc. |
+| A D3D12 title will not start, or draws wrongly | It may need mesh/task shaders. The private RADV ships DirectMesh; check `bc250-diag` for the driver version. If a title hangs with mesh on, set `RADV_DIRECTMESH=0` for that title and add `amdgpu.gpu_recovery=0` to keep the machine reachable over SSH while collecting `dmesg`. |
+| FSR 4 setting does nothing | The FSR4 shaders are matched to FSR 4.1.1 INT8 by exact shader identity. A different FSR build, or a resolution outside the matched bucket, produces no uplift and no warning. See [FSR4](#fsr4). |
+| `bc250-diag` says the amdgpu is stock | The patched module was not built for this kernel. `/usr/share/bc250-gfx1013/STATUS` records why. The image still works: the compute-queue path does not need the patched module. |
 | Pitch-shifted or missing DP→HDMI audio | Prefer native DisplayPort; passive adapters only; USB DAC as fallback. This image sets governor `temp-read = "sysfs"` so the governor does not hold a DRM handle that stalls handovers; DP audio itself needs kernel 6.19.10+ |
 | Screen flicker on composited menus (Steam UI, window moves) | `MESA_LOADER_DRIVER_OVERRIDE=zink` is no longer set; see [Retired: session-wide zink](#retired-session-wide-zink). Confirm with `glxinfo -B` showing `radeonsi`. If flicker remains, it is likely the DP→HDMI adapter row below |
 | TV flicker / handshake via adapter dongles | Use a plain DP→HDMI **cable** (no dongle). BIOS needs native DP. Adapters that drop the link when the picture is blank benefit from the `temp-read = "sysfs"` default shipped here |
