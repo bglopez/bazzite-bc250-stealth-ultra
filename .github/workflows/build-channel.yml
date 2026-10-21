@@ -120,29 +120,23 @@ jobs:
           RUST_LOG_STYLE: always
           CHANNEL: ${{ inputs.channel }}
         run: |
+          set -o pipefail
           staging_tag="staging-${CHANNEL}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python3 .github/render-recipe.py \
             --channel "$CHANNEL" \
             --kernel-release "${{ needs.upstream.outputs.kernel_release }}" \
             --staging-tag "$staging_tag" \
             --output recipes/recipe-ci.yml
-          bluebuild build --no-sign -v recipes/recipe-ci.yml
+          bluebuild build --no-sign -v recipes/recipe-ci.yml 2>&1 | tee "$RUNNER_TEMP/bluebuild.log"
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/bazzite-bc250-stealth-ultra"
-          # Look the pushed tag up in the registry rather than assuming its
+          # Take the tag from what the build reports rather than assuming a
           # name. BlueBuild prefixes the tag with the branch when the build
           # is not from the default branch, and appends the Fedora version
           # to the versioned tags.
-          tags=$(curl -fsSL \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            "https://ghcr.io/v2/${GITHUB_REPOSITORY_OWNER,,}/bazzite-bc250-stealth-ultra/tags/list?n=1000" \
-            | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin).get("tags") or []))')
-          pushed_tag=$(grep -xF "$staging_tag" <<<"$tags" | head -1)
-          if [[ -z $pushed_tag ]]; then
-            pushed_tag=$(grep -F "$staging_tag" <<<"$tags" | head -1)
-          fi
+          pushed_tag=$(grep -oE "Successfully built and pushed image ${image}:[^[:space:]]+" \
+            "$RUNNER_TEMP/bluebuild.log" | head -1 | sed "s|.*${image}:||")
           test -n "$pushed_tag" || {
-            echo "no tag matching $staging_tag was pushed; registry has:" >&2
-            echo "$tags" >&2
+            echo "the build did not report a pushed image tag" >&2
             exit 1
           }
           echo "pushed tag: $pushed_tag"
@@ -161,6 +155,10 @@ jobs:
             --new-bundle-format=false --use-signing-config=false --recursive "$IMAGE@$DIGEST"
           cosign verify --key cosign.pub "$IMAGE@$DIGEST"
       - name: Publish verified deployment tag
+        # Only the default branch advances the public tags. A build from a
+        # branch is signed and verified, but it does not replace what
+        # users are pulling until it has been merged and tested.
+        if: github.ref == 'refs/heads/master'
         env:
           CHANNEL: ${{ inputs.channel }}
           IMAGE: ${{ steps.build.outputs.image }}
@@ -177,10 +175,12 @@ jobs:
           test "$published" = "$DIGEST"
           cosign verify --key cosign.pub "$IMAGE@$published"
       - name: Record successfully published base
+        if: github.ref == 'refs/heads/master'
         env:
           BASE_DIGEST: ${{ needs.upstream.outputs.digest }}
         run: printf '%s\n' "$BASE_DIGEST" > "$RUNNER_TEMP/bc250-base-digest"
       - name: Cache successfully published base digest
+        if: github.ref == 'refs/heads/master'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/bc250-base-digest
