@@ -13,7 +13,7 @@ The direct base is `ghcr.io/ublue-os/bazzite-deck:stable` for `:latest` and `ghc
 | 40CU dispatch | Enables `bc250-force-40cu.service` to request all 40 CUs on every boot, after GPU initialization and saved CU settings, before the display manager. Adds enable, recovery, and log commands. |
 | 40CU governor cap | Applies the community 40CU sweet-spot (`1500 MHz / 900 mV`) as the default `cyan-skillfish-governor-smu` config at image build, because the stock governor curve is 24CU-oriented. `ujust bc250-cu-governor-restore` returns to the package default. |
 | Vulkan async compute | Builds Mesa 26.2.5 RADV with three pinned BC-250 patches into `/usr/lib/bc250-radv`. Selects this patched driver globally for 64-bit Vulkan applications in new desktop and game sessions; retains stock 32-bit RADV and software rendering. |
-| Graphics session defaults | Sets `AMD_VULKAN_ICD=RADV`, `RADV_DEBUG=nohiz`, and `MESA_LOADER_DRIVER_OVERRIDE=zink` in `/etc/environment`, preserving unrelated base-image settings. |
+| Graphics session defaults | Sets `AMD_VULKAN_ICD=RADV` and `RADV_DEBUG=nohiz` in `/etc/environment`, preserving unrelated base-image settings. `MESA_LOADER_DRIVER_OVERRIDE=zink` was **removed**; see [Retired: session-wide zink](#retired-session-wide-zink). |
 | Async validation and recovery | Includes correctness and soak tests, queue status, game tracing, and commands to enable or disable global driver selection. |
 | Game benchmarks | Adds `bc250-benchmark` for MangoHud frame captures, system context, and before/after comparisons. Driver and unified-heap overrides apply only to the launched game. |
 | Temperature monitoring | Loads the base kernel's `nct6683` module with `force=true` at boot for motherboard temperature readings. Does not change fan control. |
@@ -285,21 +285,41 @@ To remove it from future builds, delete the `mitigations=off` entry in `recipes/
 
 Keep a known-good deployment available for rollback. This image's automatic 40CU setting is intended for the owner's tested board; stability is not guaranteed on other boards.
 
+## Retired: session-wide zink
+
+Earlier revisions set `MESA_LOADER_DRIVER_OVERRIDE=zink` in `/etc/environment`, transcribing the third item from the [BC-250 guide's system-wide graphics settings](https://elektricm.github.io/amd-bc250-docs/drivers/radv/#system-wide-configuration). That list is written for GL *games*, but `/etc/environment` feeds `systemd-environment-d-generator`, so the override reached the whole session. Two consumers picked it up that the guide never intended to target:
+
+- **KWin**, the compositor, rendering through OpenGL-on-Vulkan,
+- **Steam's client UI**, which is Chromium/CEF and uses its own GPU process.
+
+Both then rendered on top of the private patched RADV, because `VK_DRIVER_FILES` points at `/usr/lib/bc250-radv`. The reported symptom was a composited-surface flicker, most visible on Steam menus opening and closing and on window moves and resizes. Both paths create and tear down surfaces, which is when the flicker appeared. The same DP→HDMI adapter used on this board is documented as flicker-prone on its own ([Known issues](#known-issues-and-community-fixes)), so zink is a contributor to test, not a proven sole cause — if flicker persists after deploying an image without it, keep investigating the display link.
+
+Removing the key is safe for the async compute work: `AMD_VULKAN_ICD=RADV`, `RADV_DEBUG=nohiz`, and the private ICD selection are unchanged, so games still use the patched RADV. OpenGL applications fall back to `radeonsi` instead of zink. That is the better-behaved path for a compositor, but a legacy GL title that specifically benefited from zink may see a difference. Per-application overrides still work; Steam launch options are a good place to re-add zink for one title without restoring it session-wide.
+
+The build now **actively removes** a stale `MESA_LOADER_DRIVER_OVERRIDE` line rather than merely ceasing to write one. `/etc` is mutable across OSTree updates, so a machine deployed from an older image keeps whatever it already had, and dropping the write alone would not have reached it. `check-image.sh` asserts the key is absent, so it cannot be reintroduced without failing the build.
+
+To confirm the running session after deploying and logging back in:
+
+```bash
+printenv MESA_LOADER_DRIVER_OVERRIDE   # expect empty
+glxinfo -B | grep -i "OpenGL renderer" # expect radeonsi, not zink
+```
+
 ## Async compute Vulkan driver
 
-The image includes the [BC-250 guide's system-wide graphics settings](https://elektricm.github.io/amd-bc250-docs/drivers/radv/#system-wide-configuration) in `/etc/environment`: `AMD_VULKAN_ICD=RADV`, `RADV_DEBUG=nohiz`, and `MESA_LOADER_DRIVER_OVERRIDE=zink`. These request RADV, disable hierarchical Z, and select Zink for OpenGL. They leave the private Vulkan ICD selection intact and do not add `nocompute`, which would disable the patched compute queue.
+The image includes two of the [BC-250 guide's system-wide graphics settings](https://elektricm.github.io/amd-bc250-docs/drivers/radv/#system-wide-configuration) in `/etc/environment`: `AMD_VULKAN_ICD=RADV` and `RADV_DEBUG=nohiz`. These request RADV and disable hierarchical Z. They leave the private Vulkan ICD selection intact and do not add `nocompute`, which would disable the patched compute queue. The guide's third setting, `MESA_LOADER_DRIVER_OVERRIDE=zink`, is no longer applied — see [Retired: session-wide zink](#retired-session-wide-zink).
 
-These defaults take effect after deploying the rebuilt image and starting a new session (or rebooting). Existing local edits to `/etc/environment` can persist across image updates; check the active values with `printenv AMD_VULKAN_ICD RADV_DEBUG MESA_LOADER_DRIVER_OVERRIDE VK_DRIVER_FILES`. Applications can override them individually, and Flatpak graphics behavior still needs separate validation.
+These defaults take effect after deploying the rebuilt image and starting a new session (or rebooting). Existing local edits to `/etc/environment` can persist across image updates; check the active values with `printenv AMD_VULKAN_ICD RADV_DEBUG VK_DRIVER_FILES`. Applications can override them individually, and Flatpak graphics behavior still needs separate validation.
 
 Driver selection is split across three places:
 
 | File | Role |
 | --- | --- |
-| `/etc/environment` | `AMD_VULKAN_ICD`, `RADV_DEBUG=nohiz`, `MESA_LOADER_DRIVER_OVERRIDE=zink` |
+| `/etc/environment` | `AMD_VULKAN_ICD=RADV`, `RADV_DEBUG=nohiz` |
 | `/etc/environment.d/95-bc250-async-compute.conf` | `VK_DRIVER_FILES` / `VK_ICD_FILENAMES` → patched 64-bit RADV, stock 32-bit RADV, software `lvp` |
 | `/etc/profile.d/95-bc250-async-compute.sh` | Same ICD chain for login shells |
 
-`ujust bc250-async-disable` / `ujust bc250-async-enable` rewrite the environment.d/profile.d files; the three `/etc/environment` graphics defaults are left alone. `bc250-async-compute steam` prints the recommended per-game Steam launch options; `bc250-async-compute env` shows the session selection; `bc250-async-compute always status` reports whether the patched driver is the system default.
+`ujust bc250-async-disable` / `ujust bc250-async-enable` rewrite the environment.d/profile.d files; the two `/etc/environment` graphics defaults are left alone. `bc250-async-compute steam` prints the recommended per-game Steam launch options; `bc250-async-compute env` shows the session selection; `bc250-async-compute always status` reports whether the patched driver is the system default.
 
 The image builds a private Mesa 26.2.5 RADV with the three patches from [bc250-async-compute-bazzite](https://github.com/tri3gubki-ops/bc250-async-compute-bazzite), pinned to commit `56bf06b986f4639c32a669e9cdd31cdf7fba44b6`. Mesa's source archive is SHA-256 checked. The patches were dry-run against the 26.2.5 tarball and apply with small offsets. The build stage's compilers and headers are not copied into the final image.
 
@@ -450,6 +470,7 @@ Board quirks the image cannot fix, plus host-side workarounds from the BC-250 co
 | Memory-heavy games crash | See [Memory policy notes](#memory-policy-notes-zram-vs-swapfile) |
 | No hardware video encode/decode | VCN is power-gated / unusable publicly; use software encode (x264) in OBS etc. |
 | Pitch-shifted or missing DP→HDMI audio | Prefer native DisplayPort; passive adapters only; USB DAC as fallback. This image sets governor `temp-read = "sysfs"` so the governor does not hold a DRM handle that stalls handovers; DP audio itself needs kernel 6.19.10+ |
+| Screen flicker on composited menus (Steam UI, window moves) | `MESA_LOADER_DRIVER_OVERRIDE=zink` is no longer set; see [Retired: session-wide zink](#retired-session-wide-zink). Confirm with `glxinfo -B` showing `radeonsi`. If flicker remains, it is likely the DP→HDMI adapter row below |
 | TV flicker / handshake via adapter dongles | Use a plain DP→HDMI **cable** (no dongle). BIOS needs native DP. Adapters that drop the link when the picture is blank benefit from the `temp-read = "sysfs"` default shipped here |
 | Unstable CPU overclock / random reboots | Never exceed **1.325 V CPU core (Vid)** — bricking risk. GPU governor min voltage must stay ≥ 700 mV |
 | Hard power-off under load (rails dead, wall <30 W) | OCP trip — lower GPU clocks (≤2200 MHz), stay within the 40CU voltage table, reduce CPU OC. Single 8-pin is only safe to ~260 W wall |

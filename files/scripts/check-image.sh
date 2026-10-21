@@ -79,10 +79,17 @@ test -s /etc/environment.d/95-bc250-async-compute.conf
 test -s /etc/pki/containers/bazzite-bc250-stealth-ultra.pub
 python3 - <<'PY'
 import json
+import re
 from pathlib import Path
 environment = Path('/etc/environment').read_text().splitlines()
-for setting in ('AMD_VULKAN_ICD=RADV', 'RADV_DEBUG=nohiz', 'MESA_LOADER_DRIVER_OVERRIDE=zink'):
+assignment = re.compile(r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=')
+for setting in ('AMD_VULKAN_ICD=RADV', 'RADV_DEBUG=nohiz'):
     assert setting in environment, f'Missing graphics default: {setting}'
+# zink is retired: it forced KWin and Steam's Chromium through GL-on-Vulkan
+# and flickered composited menus. Guard against a silent re-add.
+assert not any(assignment.match(line) and assignment.match(line).group(1)
+               == 'MESA_LOADER_DRIVER_OVERRIDE' for line in environment), \
+    'MESA_LOADER_DRIVER_OVERRIDE must not be set in /etc/environment'
 icd = json.loads(Path('/usr/lib/bc250-radv/share/vulkan/icd.d/radeon_icd.x86_64.json').read_text())
 assert Path(icd['ICD']['library_path']).is_file()
 policy = json.loads(Path('/etc/containers/policy.json').read_text())
