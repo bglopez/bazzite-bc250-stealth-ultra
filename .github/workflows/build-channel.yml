@@ -21,6 +21,7 @@ jobs:
     outputs:
       digest: ${{ steps.base.outputs.digest }}
       changed: ${{ steps.compare.outputs.changed }}
+      kernel_release: ${{ steps.kernel.outputs.release }}
     steps:
       - name: Resolve upstream Bazzite Deck base digest
         id: base
@@ -122,7 +123,7 @@ jobs:
           staging_tag="staging-${CHANNEL}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python3 .github/render-recipe.py \
             --channel "$CHANNEL" \
-            --kernel-release "${{ steps.kernel.outputs.release }}" \
+            --kernel-release "${{ needs.upstream.outputs.kernel_release }}" \
             --staging-tag "$staging_tag" \
             --output recipes/recipe-ci.yml
           bluebuild build --no-sign -v recipes/recipe-ci.yml
