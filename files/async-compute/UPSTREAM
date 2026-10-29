@@ -1,8 +1,13 @@
 Source: https://github.com/MastaG/linux-cachyos-bc250
-Commit: f05991ace64a42eda3d2dc583e96b8d35ce393e3
 License: GPL-2.0-only (see LICENSE)
 
-The BC-250 Mesa patch series is vendored from this revision, unchanged:
+The BC-250 Mesa patch series is vendored from upstream, unchanged, in one
+directory per Mesa release it was rebased for:
+
+  patches/26.2.4 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
+  patches/26.2.5 @ c771c1f7d32337d8b972960c678f58cebee13ff0
+
+Each directory holds the same seven patches:
 
   0001-gfx1013-compute-queue-fix.patch          expose the ACE compute queue
   0002-bc250-directmesh.patch                   DirectMesh v1.3.1 (mesh/task shaders)
@@ -12,15 +17,25 @@ The BC-250 Mesa patch series is vendored from this revision, unchanged:
   0006-bc250-fsr4-resolution-variants.patch     FSR4: 1080p and 4K+ shader buckets
   0007-bc250-fsr4-production-defaults.patch     FSR4: turn the candidates on
 
-0100-radv-ac-optional-bc250-ip-debug-print.patch is this image's own diagnostic
-aid and is not from upstream.
+The series is per Mesa release because the BC-250 series funds its shader
+key flags out of padding bits that upstream Mesa hands out as it needs
+them. Mesa 26.2.5 took one of them for the exact-GLSL-FMA option, so the
+26.2.4 series does not apply to 26.2.5 and the 26.2.5 series does not
+apply to 26.2.4. The 26.2.5 series is upstream's "fund DirectMesh's key
+bits for 26.2.5" revision, which names the leftover key bits, moves the
+route-key mirrors to 28 bytes and bumps RADV_BC250_PIPELINE_PLAN_VERSION to
+9 so a plan serialized by the old layout is not read as the new one.
+
+patches/local/0100-radv-ac-optional-bc250-ip-debug-print.patch is this
+image's own diagnostic aid and is not from upstream. It applies on top of
+every vendored series.
 
 The helpers, the correctness tests and the soak test are vendored unchanged
 from the previous source, https://github.com/tri3gubki-ops/bc250-async-compute-bazzite
 at commit 56bf06b986f4639c32a669e9cdd31cdf7fba44b6 (MIT, see LICENSE). The
 image build relocates /usr/local paths into immutable /usr paths.
 
-Mesa is no longer built from a pinned tarball. The build stage starts from the
+Mesa is not built from a pinned tarball. The build stage starts from the
 base image and uses the base image's own Mesa version, so the private driver
 tracks the Mesa Bazzite ships. The OpenGamingCollective patches (radv-defaults,
 vram-overcommit) are fetched for that version and applied, so the private

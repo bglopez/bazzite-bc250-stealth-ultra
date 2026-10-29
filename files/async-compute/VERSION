@@ -1,8 +1,24 @@
-BC-250 Mesa patch series 0.4.0
+BC-250 Mesa patch series 0.5.0
 
-Upstream: MastaG/linux-cachyos-bc250 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
+Upstream: MastaG/linux-cachyos-bc250
+  patches/26.2.4 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
+  patches/26.2.5 @ c771c1f7d32337d8b972960c678f58cebee13ff0
 Mesa: the base image's own version, resolved at build time
 OGC patches: radv-defaults, vram-overcommit, fetched for that version
+
+0.5.0
+  - The vendored series is keyed by the Mesa release it was rebased for.
+    Mesa 26.2.5 spends one of the padding bits the BC-250 series funds its
+    shader key flags from, so the series for 26.2.4 does not apply to 26.2.5
+    and the other way round. The build picks the series that matches the
+    base image's Mesa and fails when there is none.
+  - Mesa 26.2.5 series: upstream commit "fund DirectMesh's key bits for
+    26.2.5", which names the leftover key bits, moves the route-key mirrors
+    to 28 bytes and bumps RADV_BC250_PIPELINE_PLAN_VERSION to 9.
+  - The OpenGamingCollective patches are applied with one line of context
+    dropped when the strict application fails, because OGC re-tags the same
+    patch content across Mesa releases while Mesa keeps editing the file
+    the patch touches.
 
 0.4.0
   - Mesa is built at the base image's Mesa version with the base image's OGC

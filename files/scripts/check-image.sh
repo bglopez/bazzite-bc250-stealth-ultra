@@ -86,6 +86,11 @@ test -s /usr/share/bc250-async-compute/VERSION
 test -s /usr/share/bc250-async-compute/PATCH-SERIES
 grep -q '^Mesa ' /usr/share/bc250-async-compute/VERSION
 grep -q 'OGC patches: radv-defaults vram-overcommit' /usr/share/bc250-async-compute/VERSION
+# The image records which vendored series it was built from.
+grep -q '^BC-250 patch series: [0-9]' /usr/share/bc250-async-compute/VERSION
+# The vendored series that was used ships with the image.
+test -d "/usr/share/bc250-async-compute/patches/$(sed -n 's/^BC-250 patch series: \([0-9.]*\).*/\1/p' /usr/share/bc250-async-compute/VERSION)"
+test -d /usr/share/bc250-async-compute/patches/local
 
 # The patched amdgpu. Either it is installed and is the module that resolves
 # and is the copy in the initramfs, or the build recorded why it is not.
