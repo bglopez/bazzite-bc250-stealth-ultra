@@ -6,6 +6,7 @@ directory per Mesa release it was rebased for:
 
   patches/26.2.4 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
   patches/26.2.5 @ c771c1f7d32337d8b972960c678f58cebee13ff0
+  patches/26.2.6 @ 4199d5b5c5b547ba8e90403ef1808f2123014341
 
 Each directory holds the same seven patches:
 
@@ -25,6 +26,21 @@ apply to 26.2.4. The 26.2.5 series is upstream's "fund DirectMesh's key
 bits for 26.2.5" revision, which names the leftover key bits, moves the
 route-key mirrors to 28 bytes and bumps RADV_BC250_PIPELINE_PLAN_VERSION to
 9 so a plan serialized by the old layout is not read as the new one.
+
+The 26.2.6 series is upstream's patches/mesa at 4199d5b5c5b5, the newest
+revision of the stable series. Upstream had not keyed a rebase for 26.2.6
+at the time of vendoring (its stable Mesa target is still 26.2.5); beyond
+c771c1f7 the series gained the DirectMesh auto-IDX/RDNA1 release
+(d9fb8378580b) and an explicit pad in the IDX setup args for the 32-bit
+builds (4199d5b5c5b5), while the FSR4 patches changed only in their
+index blob-hash lines. This repository verified the series for 26.2.6
+before vendoring it: every patch applies cleanly to the pristine Mesa
+26.2.6 tarball in build order (series, then patches/local, then the OGC
+radv-defaults with the reduced-context fallback and vram-overcommit
+strictly, each reverse-verified), and the files that hold the shader key
+bits (nir_shader_compiler_options.h, radv_shader.h, radv_pipeline.h,
+radv_pipeline_graphics.h) are byte-identical between 26.2.5 and 26.2.6,
+so 26.2.6 spent none of the padding bits the series is funded from.
 
 patches/local/0100-radv-ac-optional-bc250-ip-debug-print.patch is this
 image's own diagnostic aid and is not from upstream. It applies on top of

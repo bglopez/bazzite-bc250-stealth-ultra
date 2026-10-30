@@ -1,10 +1,20 @@
-BC-250 Mesa patch series 0.5.0
+BC-250 Mesa patch series 0.6.0
 
 Upstream: MastaG/linux-cachyos-bc250
   patches/26.2.4 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
   patches/26.2.5 @ c771c1f7d32337d8b972960c678f58cebee13ff0
+  patches/26.2.6 @ 4199d5b5c5b547ba8e90403ef1808f2123014341
 Mesa: the base image's own version, resolved at build time
 OGC patches: radv-defaults, vram-overcommit, fetched for that version
+
+0.6.0
+  - Mesa 26.2.6 series: upstream's stable series at 4199d5b5c5b5, which
+    was still keyed for 26.2.5 upstream. Beyond the 26.2.5 series it adds
+    the DirectMesh auto-IDX/RDNA1 release and the 32-bit IDX setup args
+    pad; the FSR4 patches are unchanged apart from their index lines.
+    Verified before vendoring: the whole build order (series, local patch,
+    OGC patches) applies cleanly to the pristine Mesa 26.2.6 tarball, and
+    the key-bit files are byte-identical between 26.2.5 and 26.2.6.
 
 0.5.0
   - The vendored series is keyed by the Mesa release it was rebased for.
