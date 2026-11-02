@@ -18,6 +18,14 @@ skip() {
 	echo "::warning::gfx1013 kernel module skipped: $*"
 	echo "not built: $*" > "$OUT/STATUS"
 	printf 'not built: %s\n' "$*" > "$OUT/usr/lib/bc250-gfx1013/STATUS"
+	# The provenance of the patch series ships even when the module does
+	# not: the image checks require it unconditionally, and it documents
+	# the series that was not built.
+	for file in LICENSE NOTICE UPSTREAM; do
+		if [[ -f "$sources/$file" ]]; then
+			install -m 644 "$sources/$file" "$OUT/usr/lib/bc250-gfx1013/$file"
+		fi
+	done
 	exit 0
 }
 

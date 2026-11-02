@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Offline image checks: no GPU register writes or service starts during builds.
 set -euo pipefail
+# Most checks here are silent tests; name the one that fails.
+trap 'printf "check-image.sh failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 rpm -q cyan-skillfish-governor-smu pciutils umr
 for command in bc250-cu-live-manager bc250-governor-profile cyan-skillfish-governor-smu umr ujust just btrfs swapon zramctl vulkaninfo bc250-async-compute bc250-benchmark mangohud; do
   command -v "$command" >/dev/null
