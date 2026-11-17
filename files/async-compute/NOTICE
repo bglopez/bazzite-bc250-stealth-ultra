@@ -6,14 +6,14 @@ This directory carries two separately licensed sets of files.
 Mesa patch series (patches/0001-0007)
 --------------------------------------
 Source:  https://github.com/MastaG/linux-cachyos-bc250
-Commit:  f05991ace64a42eda3d2dc583e96b8d35ce393e3
+Commit:  f1f2dc6ac7c1c909cded4af22408fb2f30387fd1
 License: GPL-2.0-only (LICENSE-GPL-2.0)
 
   0001  expose the ACE compute queue and apply the GFX1013 async-compute
         dispatch workaround
-  0002  DirectMesh v1.3.1, by lonewolf0622
+  0002  DirectMesh v1.4, by lonewolf0622
         (https://github.com/lonewolf0622/bc250meshtaskwork, release
-        directmesh-v1.3.1, commit 3977ab4)
+        directmesh-v1.4, commit cac0bcc)
   0003  FSR4: deferred SDot lowering, based on the V3 work of
         David Moraza Sanchez (https://github.com/dmorazasanchez/bc250-fsr4)
   0004  FSR4: combined unroll and rematerialization

@@ -1,11 +1,24 @@
-BC-250 Mesa patch series 0.6.0
+BC-250 Mesa patch series 0.7.0
 
 Upstream: MastaG/linux-cachyos-bc250
-  patches/26.2.4 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
-  patches/26.2.5 @ c771c1f7d32337d8b972960c678f58cebee13ff0
-  patches/26.2.6 @ 4199d5b5c5b547ba8e90403ef1808f2123014341
+  patches/26.2.7 @ f1f2dc6ac7c1c909cded4af22408fb2f30387fd1
 Mesa: the base image's own version, resolved at build time
 OGC patches: radv-defaults, vram-overcommit, fetched for that version
+
+0.7.0
+  - Mesa 26.2.7 series: upstream's patches/mesa at f1f2dc6ac7c1, the
+    "update DirectMesh to v1.4" revision (upstream keys it for 26.2.6;
+    the later 26.3.0 rebase is not taken). DirectMesh v1.4 adds the Task
+    index route, so a Task + Mesh pipeline no Mesh route can take runs as
+    compute passes instead of failing at creation; v1.4.1 is not taken
+    (withdrawn after GPU hangs on a BC-250). The key stays 28 bytes and
+    the plan version stays 9.
+    Verified before vendoring: the whole build order (series, local patch,
+    OGC patches) applies cleanly to the pristine Mesa 26.2.7 tarball, and
+    the key-bit files are byte-identical between 26.2.6 and 26.2.7.
+  - The 26.2.4, 26.2.5 and 26.2.6 series are retired: the base image is
+    on 26.2.7 in both channels and the build only keeps the series for
+    the Mesa it actually builds against.
 
 0.6.0
   - Mesa 26.2.6 series: upstream's stable series at 4199d5b5c5b5, which
