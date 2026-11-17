@@ -366,10 +366,12 @@ The vendored series is deliberately small, and each patch is either inert outsid
 | --- | --- |
 | GFX1013 PASID TLB invalidation | The KIQ-routed PASID TLB invalidation corrupts sustained KFD workloads on this die; route it through MMIO. |
 | GFX1013 compute gfxoff guard | Drive `amdgpu_gfx_off_ctrl()` explicitly on compute-idle transitions, which the generic gfx10 path never reaches for this chip. |
-| BC-250 KFD TLB flush by runlist | Rebuild the active runlist, the invalidation path measured to work on this die. |
+| BC-250 KFD TLB flush by runlist | Rebuild the active runlist, the invalidation path measured to work on this die. Covers unmap, map and SVM map/unmap (`amdgpu.bc250_flush_by_runlist` bitmask: 1 = unmap, 2 = map; **off by default**). |
 | amdgpu TTM NULL page guard | Partial TTM population can leave NULL entries in the page vector; skip them instead of dereferencing. |
 | Cyan Skillfish sclk range | The kernel-side clamp was 1000–2000 MHz; the part runs 350–2230. This does not change the image's default 1500 MHz cap. |
 | BC-250 40CU unlock | The same three register writes the runtime manager does, as a module parameter. **Off by default** (`amdgpu.bc250_cc_write_mode=0`); the image uses the runtime manager instead. |
+| BC-250 KFD VMID flushes over MMIO | Route KFD VMID TLB flushes over MMIO instead of the KIQ, which stalls under sustained multi-process compute. Active only on this chip; graphics VMIDs keep their route. |
+| BC-250 per-shader-array WGP mask | `amdgpu.bc250_cc_wgp_mask` unlocks only healthy harvested WGPs on boards with defective ones. **Off by default**; takes precedence over `bc250_cc_write_mode`. |
 | bc250_gfx1013 marker | A read-only parameter, so userspace can tell a patched amdgpu from the stock one. |
 
 The module **replaces** the stock one in place rather than being added under `updates/`. Both work, but dracut's no-hostonly pass copies the whole GPU module set into the initramfs, so a module added under `updates/` ends up next to the stock one: the initramfs then carries two copies of a 45 MB driver and depends on `modules.dep` to pick the right one. Replacing in place leaves exactly one `amdgpu.ko`, in the initramfs and in the image, and it is the patched one. The initramfs is regenerated afterwards so the early-boot copy is the patched driver, and the image check unpacks the initramfs and confirms it.

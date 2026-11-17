@@ -1,5 +1,5 @@
 Source: https://github.com/MastaG/linux-cachyos-bc250
-Commit: f05991ace64a42eda3d2dc583e96b8d35ce393e3
+Commit: 401df3f58ab22a16345d290a02ffeb7308a1727a
 License: GPL-2.0-only (see LICENSE)
 
 The BC-250 amdgpu patch series is vendored from this revision, unchanged,
@@ -10,3 +10,50 @@ The module is built against the base image's exact kernel: the kernel-devel
 RPM comes from the matching Universal Blue akmods image, the amdgpu sources
 from the kernel.org tarball for that version, and the OpenGamingCollective
 amdgpu changes from the kernel release the base image ships.
+
+This revision is upstream's Linux 7.3-rebased set (the base image moved to
+7.3.4). Against the previously vendored revision (f05991ace64a) the five
+unchanged patches moved only their anchors (index and hunk line numbers)
+for the 7.3 rebase, 0003 was rewritten, and two patches were added:
+
+  0003  the runlist-rebuild TLB flush, rewritten on top of
+        KytyPS5-Native's bc250-amdgpu patch (faf53a5). The knob
+        (bc250_flush_by_runlist) became a site bitmask (1 = unmap-side,
+        2 = map-side) instead of a bool, and the flush now also covers
+        the map-side and SVM map/unmap paths, not just the unmap ioctl.
+        Upstream notes the map-side case is the one that actually faults:
+        hipFree unmaps, hipMalloc reuses the VA, the PTEs are correct,
+        and the GPU keeps translating through the previous mapping.
+
+  0008  KFD VMID flushes over MMIO instead of the KIQ (0028 upstream).
+        On this die the KIQ stops answering under sustained compute from
+        several processes ("failed to write reg 28b4 wait reg 28c6",
+        "Timeout waiting for VM flush hub: 0!"), each stall lasting
+        seconds. GFX hub flushes of KFD VMIDs (first_kfd_vmid and up)
+        take the same MMIO, semaphore-guarded, type-0 path the PASID
+        flushes (0001) use; graphics VMIDs and the GART flush keep their
+        route. Hardware-tested by upstream on a BC-250: a HIP stress test
+        that reallocates buffers under continuous ALU load went from
+        ~20 KIQ flush failures and 3328 iterations to zero failures and
+        5085 iterations, and four processes ran 10 minutes clean.
+
+  0009  per-shader-array WGP enable masks (0029 upstream), from
+        ForceConstant's patch in upstream issue #14. amdgpu.bc250_cc_wgp_mask
+        takes up to four comma-separated 5-bit masks (SE0.SH0, SE0.SH1,
+        SE1.SH0, SE1.SH1) so boards with defective harvested WGPs can
+        unlock only the healthy ones and KFD enumerates them. Writes
+        CC_GC_SHADER_ARRAY_CONFIG's INACTIVE_WGPS field (bits 31:16),
+        SPI_PG_ENABLE_STATIC_WGP_MASK and RLC_PG_ALWAYS_ON_WGP_MASK
+        before the CU enumeration; takes precedence over
+        bc250_cc_write_mode. Opt-in: an unset or unparsable mask leaves
+        the registers as fused. Upstream has not booted this one.
+
+The two new patches compose with the series this repository already
+carried: 0008 routes through the MMIO path 0001 builds and relies on
+0002 holding GFXOFF off during KFD activity, and 0009 extends the
+bc250_cc_write_mode block 0006 adds.
+
+Upstream's later work -- the display/CH7218 family, the VRM and GDDR6
+hwmon drivers, and KytyPS5-Native's second gfx ring, EOP events, no-HWS
+static-VMID flush, flush-type knob and mtype mapping (0023-0027) -- is
+deliberately not carried; see NOTICE.

@@ -1,10 +1,10 @@
 BC-250 amdgpu kernel patch series
 ================================
 
-patches/0001-0006
------------------
+patches/0001-0006, 0008-0009
+---------------------------
 Source:  https://github.com/MastaG/linux-cachyos-bc250
-Commit:  f05991ace64a42eda3d2dc583e96b8d35ce393e3
+Commit:  401df3f58ab22a16345d290a02ffeb7308a1727a
 License: GPL-2.0-only (LICENSE)
 
   0001  GFX1013 PASID TLB invalidation
@@ -22,6 +22,10 @@ License: GPL-2.0-only (LICENSE)
         The HWS path on this chip does not expose a usable PASID to VMID
         mapping to the normal gfx10 TLB flush. Rebuild the active runlist
         instead, which is the invalidation path measured to work here.
+        The flush covers the unmap, map and SVM map/unmap sites
+        (bc250_flush_by_runlist bitmask: 1 = unmap, 2 = map).
+        Based on KytyPS5-Native's bc250-amdgpu patch (faf53a5), via
+        GabriWar/bc250-rocm-working.
 
   0004  amdgpu TTM NULL page guard
         Partial TTM population can leave NULL entries in the page vector.
@@ -38,6 +42,20 @@ License: GPL-2.0-only (LICENSE)
         RLC_PG_ALWAYS_ON_WGP_MASK during CU enumeration. Off by default:
         amdgpu.bc250_cc_write_mode defaults to 0 and every write is guarded
         on PCI device id 0x13FE.
+
+  0008  BC-250 KFD VMID flushes over MMIO
+        GFX hub flushes of KFD VMIDs take the same MMIO path as the PASID
+        flushes (0001) instead of the KIQ, which stops answering under
+        sustained multi-process compute. Graphics VMIDs and the GART flush
+        keep their route.
+
+  0009  BC-250 per-shader-array WGP mask
+        From ForceConstant's patch in upstream issue #14
+        (https://github.com/MastaG/linux-cachyos-bc250/issues/14).
+        amdgpu.bc250_cc_wgp_mask takes up to four 5-bit WGP enable masks
+        so boards with defective harvested WGPs can unlock only the
+        healthy ones. Off by default; the CC write goes to the
+        INACTIVE_WGPS field.
 
 patches/0007
 ------------
@@ -57,10 +75,21 @@ The 8-core telemetry series (MastaG 0001-0004) is not included. It only
 matters on a board with the SMU firmware patched for eight cores, which
 this image does not support, and it rewrites the SMU metrics interfaces.
 
-The display patches (DCN201 and CH7218, MastaG 0012-0017 and 0020) are not
-included. They are specific to DP to HDMI 2.1 active adapters and to the
-governor's forced clock commits, and they need board-specific validation
-before they belong in a general image.
+The display patches (DCN201, CH7218 and PCON work, MastaG 0012-0019 and
+0022) are not included. They are specific to DP to HDMI 2.1 active
+adapters and to the governor's forced clock commits, and they need
+board-specific validation before they belong in a general image.
+
+The BC-250 secure-processor binding (MastaG 0020, carrying Mattia
+Tadini's series) and the VRM/GDDR6 hwmon drivers (MastaG 0005 and 0021)
+are not included; they are outside the compute/crash scope this series
+is limited to.
+
+KytyPS5-Native's remaining per-feature patches (MastaG 0023-0027: second
+gfx ring, render-node EOP events, no-HWS static-VMID flush, flush-type
+knob, AMDGPU_VM_MTYPE_RW mapping) are not included. They are new,
+mostly opt-in experimental paths, and 0003/0008 already carry the
+measured TLB fixes.
 
 The deferred-OD-commit series (MastaG's disabled/ directory) is not
 included. It is the documented fix for a governor commit racing HDMI FRL

@@ -1,6 +1,6 @@
-BC-250 amdgpu kernel patch series 1.0.0
+BC-250 amdgpu kernel patch series 1.1.0
 
-Upstream: MastaG/linux-cachyos-bc250 @ f05991ace64a42eda3d2dc583e96b8d35ce393e3
+Upstream: MastaG/linux-cachyos-bc250 @ 401df3f58ab22a16345d290a02ffeb7308a1727a
 MastaG file -> this series:
   0006-gfx1013-pasid-tlb-invalidation.patch  -> 0001
   0007-gfx1013-compute-gfxoff-guard.patch    -> 0002
@@ -8,6 +8,8 @@ MastaG file -> this series:
   0009-amdgpu-ttm-null-page-guard.patch     -> 0004
   0010-cyan-skillfish-sclk-range.patch      -> 0005
   0011-bc250-40cu-unlock.patch               -> 0006
+  0028-bc250-gmc-kfd-vmid-mmio-flush.patch   -> 0008
+  0029-bc250-cc-wgp-mask.patch               -> 0009
 
 0007 is adapted from Thunkar/bc250-bazzite-toolkit
 @f2b3d7687af848744084a355a01be3d28e0dce75 (MIT), relicensed GPL-2.0 as a
@@ -15,6 +17,26 @@ kernel patch; only the parameter description was corrected.
 
 Kernel: the base image's own kernel, with the OpenGamingCollective amdgpu
 changes applied on top of the kernel.org sources.
+
+1.1.0
+  - Refresh the series for the Linux 7.3 rebase upstream did (the base
+    image moved to kernel 7.3.4). 0001, 0002, 0004, 0005 and 0006 are
+    content-identical to the previously vendored revision (f05991ace64a);
+    only their anchors moved.
+  - 0003 rewritten upstream on top of KytyPS5-Native's bc250-amdgpu patch
+    (faf53a5): bc250_flush_by_runlist is now a site bitmask (1 = unmap,
+    2 = map) instead of a bool, and the runlist-rebuild flush covers the
+    map-side and SVM map/unmap paths, not just the unmap ioctl. The
+    map-side case is the one that actually faults (hipFree/hipMalloc VA
+    reuse with stale translations).
+  - 0008 (upstream 0028): KFD VMID GFX-hub flushes over the MMIO path
+    0001 uses, instead of the KIQ, which stops answering under sustained
+    multi-process compute. Hardware-tested upstream on a BC-250 (HIP
+    stress: ~20 KIQ flush failures -> none).
+  - 0009 (upstream 0029): amdgpu.bc250_cc_wgp_mask, per-shader-array WGP
+    enable masks for boards with defective harvested WGPs, from
+    ForceConstant's patch in upstream issue #14. Opt-in; an unset or
+    unparsable mask leaves the registers as fused. Not booted upstream.
 
 1.0.0
   - First release. The series is intentionally limited to patches that are
